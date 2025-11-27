@@ -86,6 +86,7 @@ export default function WROPlaybackPlanner() {
     const pxToUnit = useCallback((px) => {
         const ppm = (canvasBaseSize.width) / (MAT_MM.w);
         const ppu = unit === 'mm' ? ppm : ppm * 10;
+        if (!ppu) return 0;
         return px / (ppu * zoom);
     }, [canvasBaseSize, unit, zoom]);
 
@@ -125,21 +126,18 @@ export default function WROPlaybackPlanner() {
 
     useEffect(() => {
         const updateSize = () => {
-            const container = document.querySelector('.canvas-container');
+            const container = document.querySelector('.canvas-card');
             if (container) {
                 const rect = container.getBoundingClientRect();
                 const aspect = MAT_MM.w / MAT_MM.h;
-                let w = rect.width;
-                let h = w / aspect;
-                if (h > rect.height) {
-                    h = rect.height;
-                    w = h * aspect;
-                }
+                const w = Math.max(200, Math.floor(rect.width));
+                const h = Math.floor(w / aspect);
                 setCanvasBaseSize({ width: w, height: h });
             }
         };
         window.addEventListener('resize', updateSize);
-        updateSize();
+        // Delay slightly to ensure DOM is ready
+        setTimeout(updateSize, 0);
         return () => window.removeEventListener('resize', updateSize);
     }, []);
 
@@ -262,7 +260,7 @@ export default function WROPlaybackPlanner() {
 
     return (
         <div className="w-full h-full min-h-screen">
-            <main className="w-full h-screen flex flex-col bg-slate-50 overflow-hidden relative">
+            <main className="app-shell">
                 <Toolbar
                     drawMode={drawMode}
                     setDrawMode={setDrawMode}
@@ -291,60 +289,10 @@ export default function WROPlaybackPlanner() {
                     onZoomReset={handleZoomReset}
                 />
 
-                <section className="flex-1 relative overflow-hidden flex items-center justify-center bg-slate-200/50">
-                    <CanvasBoard
-                        fieldKey={fieldKey}
-                        bgImage={bgImage}
-                        bgOpacity={bgOpacity}
-                        grid={grid}
-                        unit={unit}
-                        robot={robot}
-                        robotImgObj={robotImgObj}
-                        sections={sections}
-                        setSections={setSections}
-                        selectedSectionId={selectedSectionId}
-                        initialPose={initialPose}
-                        setInitialPose={setInitialPose}
-                        playPose={playPose}
-                        isRunning={isRunning}
-                        drawMode={drawMode}
-                        rulerActive={rulerActive}
-                        rulerPoints={rulerPoints}
-                        setRulerPoints={setRulerPoints}
-                        snapGrid={snapGrid}
-                        snap45={snap45}
-                        referenceMode={referenceMode}
-                        reverseDrawing={reverseDrawing}
-                        zoom={zoom}
-                        canvasBaseSize={canvasBaseSize}
-                        setCanvasBaseSize={setCanvasBaseSize}
-                        ghost={ghost}
-                        setGhost={setGhost}
-                        dragging={dragging}
-                        setDragging={setDragging}
-                        hoverNode={hoverNode}
-                        setHoverNode={setHoverNode}
-                        draggingStart={draggingStart}
-                        setDraggingStart={setDraggingStart}
-                        cursorGuide={cursorGuide}
-                        setCursorGuide={setCursorGuide}
-                        drawSessionRef={drawSessionRef}
-                        drawThrottleRef={drawThrottleRef}
-                        rightEraseTimerRef={rightEraseTimerRef}
-                        rightPressActiveRef={rightPressActiveRef}
-                        actionCursorRef={actionCursorRef}
-                        unitToPx={unitToPx}
-                        pxToUnit={pxToUnit}
-                        computePoseUpToSection={(sections, initialPose, sectionId, unitToPx) => computePoseUpToSection(sections, initialPose, sectionId, unitToPx)}
-                        handleContextMenu={handleContextMenu}
-                        removeLastPointFromCurrentSection={removeLastPointFromCurrentSection}
-                        setGrid={setGrid}
-                        isSettingOrigin={isSettingOrigin}
-                        setIsSettingOrigin={setIsSettingOrigin}
-                    />
-
-                    <div className="absolute top-4 right-4 z-10 flex flex-col items-end pointer-events-none">
-                        <div className="pointer-events-auto">
+                <div className="main-grid">
+                    {/* PANEL IZQUIERDO (card) */}
+                    <aside className="left-panel">
+                        <div className="sections-list">
                             <SectionsPanel
                                 sections={sections}
                                 setSections={setSections}
@@ -364,29 +312,96 @@ export default function WROPlaybackPlanner() {
                                 unit={unit}
                             />
                         </div>
-                    </div>
-                </section>
+                    </aside>
 
-                <OptionsPanel
-                    showOptions={showOptions}
-                    setShowOptions={setShowOptions}
-                    fieldKey={fieldKey}
-                    setFieldKey={setFieldKey}
-                    bgOpacity={bgOpacity}
-                    setBgOpacity={setBgOpacity}
-                    grid={grid}
-                    setGrid={setGrid}
-                    robot={robot}
-                    setRobot={setRobot}
-                    initialPose={initialPose}
-                    setInitialPose={setInitialPose}
-                    handleBgUpload={handleBgUpload}
-                    handleRobotImageUpload={handleRobotImageUpload}
-                    setIsSettingOrigin={setIsSettingOrigin}
-                    unit={unit}
-                    setUnit={setUnit}
-                />
+                    {/* AREA DEL CANVAS (card limpia) */}
+                    <section className="canvas-card" aria-label="Canvas">
+                        <CanvasBoard
+                            fieldKey={fieldKey}
+                            bgImage={bgImage}
+                            bgOpacity={bgOpacity}
+                            grid={grid}
+                            unit={unit}
+                            robot={robot}
+                            robotImgObj={robotImgObj}
+                            sections={sections}
+                            setSections={setSections}
+                            selectedSectionId={selectedSectionId}
+                            initialPose={initialPose}
+                            setInitialPose={setInitialPose}
+                            playPose={playPose}
+                            isRunning={isRunning}
+                            drawMode={drawMode}
+                            rulerActive={rulerActive}
+                            rulerPoints={rulerPoints}
+                            setRulerPoints={setRulerPoints}
+                            snapGrid={snapGrid}
+                            snap45={snap45}
+                            referenceMode={referenceMode}
+                            reverseDrawing={reverseDrawing}
+                            setReverseDrawing={setReverseDrawing}
+                            zoom={zoom}
+                            canvasBaseSize={canvasBaseSize}
+                            setCanvasBaseSize={setCanvasBaseSize}
+                            ghost={ghost}
+                            setGhost={setGhost}
+                            dragging={dragging}
+                            setDragging={setDragging}
+                            hoverNode={hoverNode}
+                            setHoverNode={setHoverNode}
+                            draggingStart={draggingStart}
+                            setDraggingStart={setDraggingStart}
+                            cursorGuide={cursorGuide}
+                            setCursorGuide={setCursorGuide}
+                            drawSessionRef={drawSessionRef}
+                            drawThrottleRef={drawThrottleRef}
+                            rightEraseTimerRef={rightEraseTimerRef}
+                            rightPressActiveRef={rightPressActiveRef}
+                            actionCursorRef={actionCursorRef}
+                            unitToPx={unitToPx}
+                            pxToUnit={pxToUnit}
+                            computePoseUpToSection={(sections, initialPose, sectionId, unitToPx) => computePoseUpToSection(sections, initialPose, sectionId, unitToPx)}
+                            handleContextMenu={handleContextMenu}
+                            removeLastPointFromCurrentSection={removeLastPointFromCurrentSection}
+                            setGrid={setGrid}
+                            isSettingOrigin={isSettingOrigin}
+                            setIsSettingOrigin={setIsSettingOrigin}
+                        />
+                        <div className="canvas-legend" aria-hidden="true">
+                            <div className="canvas-legend__item">
+                                <span className="canvas-legend__swatch canvas-legend__swatch--center" />
+                                <span className="text-xs text-slate-600">Centro de ruedas</span>
+                            </div>
+                            <div className="canvas-legend__item">
+                                <span className="canvas-legend__swatch canvas-legend__swatch--tip" />
+                                <span className="text-xs text-slate-600">Punta del robot</span>
+                            </div>
+                        </div>
+                    </section>
+                </div>
             </main>
+
+            <OptionsPanel
+                showOptions={showOptions}
+                setShowOptions={setShowOptions}
+                fieldKey={fieldKey}
+                setFieldKey={setFieldKey}
+                bgOpacity={bgOpacity}
+                setBgOpacity={setBgOpacity}
+                grid={grid}
+                setGrid={setGrid}
+                robot={robot}
+                setRobot={setRobot}
+                initialPose={initialPose}
+                setInitialPose={setInitialPose}
+                handleBgUpload={handleBgUpload}
+                handleRobotImageUpload={handleRobotImageUpload}
+                setIsSettingOrigin={setIsSettingOrigin}
+                unit={unit}
+                setUnit={setUnit}
+            />
+
+            <footer className="footer-note">Dimensiones del tapete: 2362mm × 1143mm.</footer>
         </div>
     );
 }

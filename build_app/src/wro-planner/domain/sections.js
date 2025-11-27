@@ -25,7 +25,7 @@ export const recalcAllFollowingSections = ({ sections, changedSectionId, initial
 
     for (let i = 0; i < sectionsCopy.length; i++) {
         const startPose = { ...runningPose };
-        if (i >= changedIndex) {
+        if (i > changedIndex) {
             const newPoints = pointsFromActions(sectionsCopy[i].actions, startPose, unitToPx);
             sectionsCopy[i] = { ...sectionsCopy[i], points: newPoints };
         }
