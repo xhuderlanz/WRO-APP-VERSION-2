@@ -129,6 +129,7 @@ const CanvasBoard = ({
             ctx.globalAlpha = isGhost ? 0.4 : (robot.opacity ?? 1);
             ctx.drawImage(robotImgObj, -lPx / 2, -wPx / 2, lPx, wPx);
         } else {
+            ctx.globalAlpha = isGhost ? 0.4 : (robot.opacity ?? 1);
             ctx.fillStyle = isGhost ? `${robot.color}66` : robot.color;
             ctx.fillRect(-lPx / 2, -wPx / 2, lPx, wPx);
             ctx.strokeStyle = isGhost ? '#666' : '#333';
@@ -146,6 +147,7 @@ const CanvasBoard = ({
             ctx.lineTo(lPx / 2, 0);
             ctx.strokeStyle = isGhost ? '#fff' : '#000';
             ctx.stroke();
+            ctx.globalAlpha = 1; // Reset alpha
         }
         ctx.restore();
     }, [robot, robotImgObj, unitToPx]);
@@ -169,7 +171,7 @@ const CanvasBoard = ({
 
         // Grid
         const sizePx = unitToPx(grid.cellSize);
-        if (sizePx > 5) {
+        if (sizePx > 3) {
             ctx.beginPath();
             ctx.strokeStyle = `rgba(0,0,0,${grid.lineAlpha})`;
             ctx.lineWidth = 1;
