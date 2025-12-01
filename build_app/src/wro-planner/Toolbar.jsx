@@ -27,6 +27,8 @@ const Toolbar = ({
     onZoomIn,
     onZoomOut,
     onZoomReset,
+    playbackSpeed,
+    setPlaybackSpeed,
 }) => {
     const [quickMenu, setQuickMenu] = useState({ open: false, target: null, anchor: { x: 0, y: 0 } });
     const longPressTimerRef = useRef(null);
@@ -193,28 +195,47 @@ const Toolbar = ({
             </button>
             <button onClick={handleSnapGridToggle} className={`toolbar-btn ${snapGrid ? 'toolbar-btn--indigo' : 'toolbar-btn--muted'}`}>Snap Grid</button>
             <div className="toolbar-divider" />
-            <button
-                onPointerDown={(event) => handlePointerDown(event, 'mission')}
-                onPointerUp={(event) => handlePointerUp(event, 'mission')}
-                onPointerLeave={handlePointerCancel}
-                onPointerCancel={handlePointerCancel}
-                onClick={(event) => handleClick(event, startMission)}
-                className="toolbar-btn toolbar-btn--sky"
-            >
-                Misión ▶
-            </button>
-            <button
-                onPointerDown={(event) => handlePointerDown(event, 'section')}
-                onPointerUp={(event) => handlePointerUp(event, 'section')}
-                onPointerLeave={handlePointerCancel}
-                onPointerCancel={handlePointerCancel}
-                onClick={(event) => handleClick(event, startSection)}
-                className="toolbar-btn toolbar-btn--indigo"
-            >
-                Sección ▶
-            </button>
-            <button onClick={pauseResume} disabled={!isRunning} className={`toolbar-btn ${isPaused ? 'toolbar-btn--emerald' : 'toolbar-btn--amber'}`}>{isPaused ? 'Reanudar' : 'Pausar'}</button>
-            <button onClick={stopPlayback} disabled={!isRunning} className="toolbar-btn toolbar-btn--rose">Detener</button>
+            <div className="toolbar-group toolbar-group--playback border border-slate-200 rounded-lg p-1 bg-slate-50/50">
+                <span className="toolbar-group__label block text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1 px-1">Reproducción</span>
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-1">
+                        <button
+                            onPointerDown={(event) => handlePointerDown(event, 'mission')}
+                            onPointerUp={(event) => handlePointerUp(event, 'mission')}
+                            onPointerLeave={handlePointerCancel}
+                            onPointerCancel={handlePointerCancel}
+                            onClick={(event) => handleClick(event, startMission)}
+                            className="toolbar-btn toolbar-btn--sky"
+                        >
+                            Misión ▶
+                        </button>
+                        <button
+                            onPointerDown={(event) => handlePointerDown(event, 'section')}
+                            onPointerUp={(event) => handlePointerUp(event, 'section')}
+                            onPointerLeave={handlePointerCancel}
+                            onPointerCancel={handlePointerCancel}
+                            onClick={(event) => handleClick(event, startSection)}
+                            className="toolbar-btn toolbar-btn--indigo"
+                        >
+                            Sección ▶
+                        </button>
+                        <button onClick={pauseResume} disabled={!isRunning} className={`toolbar-btn ${isPaused ? 'toolbar-btn--emerald' : 'toolbar-btn--amber'}`}>{isPaused ? 'Reanudar' : 'Pausar'}</button>
+                        <button onClick={stopPlayback} disabled={!isRunning} className="toolbar-btn toolbar-btn--rose">Detener</button>
+                    </div>
+                    <div className="flex items-center gap-2 px-1 pb-1">
+                        <span className="text-xs font-medium text-slate-600 w-20">Velocidad: x{playbackSpeed}</span>
+                        <input
+                            type="range"
+                            min="1"
+                            max="8"
+                            step="0.5"
+                            value={playbackSpeed}
+                            onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
+                            className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                        />
+                    </div>
+                </div>
+            </div>
             <div className="toolbar-group toolbar-group--zoom">
                 <span className="toolbar-group__label">Zoom</span>
                 <div className="toolbar-zoom-control">
