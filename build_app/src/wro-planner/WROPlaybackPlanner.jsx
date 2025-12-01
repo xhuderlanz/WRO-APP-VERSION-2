@@ -69,6 +69,7 @@ export default function WROPlaybackPlanner() {
     const [zoom, setZoom] = useState(1);
     const [canvasBaseSize, setCanvasBaseSize] = useState({ width: 0, height: 0 });
     const [cursorGuide, setCursorGuide] = useState({ x: 0, y: 0, visible: false });
+    const [playbackSpeed, setPlaybackSpeed] = useState(1);
 
     const drawSessionRef = useRef({ active: false, lastPoint: null, addedDuringDrag: false });
     const drawThrottleRef = useRef({ lastAutoAddTs: 0 });
@@ -101,7 +102,7 @@ export default function WROPlaybackPlanner() {
         pauseResume,
         stopPlayback,
         actionCursorRef
-    } = usePlayback({ initialPose, sections, unitToPx, currentSection });
+    } = usePlayback({ initialPose, sections, unitToPx, currentSection, playbackSpeed });
 
     useEffect(() => {
         const preset = FIELD_PRESETS.find(p => p.key === fieldKey);
@@ -191,7 +192,9 @@ export default function WROPlaybackPlanner() {
 
     const addSection = () => {
         const newId = uid('sec');
-        setSections(prev => [...prev, { id: newId, name: `Sección ${prev.length + 1}`, points: [], actions: [], color: DEFAULT_ROBOT.color, isVisible: true }]);
+        // Simple random color generator ensuring good visibility
+        const randomColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+        setSections(prev => [...prev, { id: newId, name: `Sección ${prev.length + 1}`, points: [], actions: [], color: randomColor, isVisible: true }]);
         setSelectedSectionId(newId);
         setExpandedSections(prev => [...prev, newId]);
     };
@@ -287,6 +290,8 @@ export default function WROPlaybackPlanner() {
                     onZoomIn={handleZoomIn}
                     onZoomOut={handleZoomOut}
                     onZoomReset={handleZoomReset}
+                    playbackSpeed={playbackSpeed}
+                    setPlaybackSpeed={setPlaybackSpeed}
                 />
 
                 <div className="main-grid">

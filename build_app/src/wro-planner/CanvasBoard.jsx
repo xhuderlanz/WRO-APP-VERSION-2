@@ -173,7 +173,12 @@ const CanvasBoard = ({
         const sizePx = unitToPx(grid.cellSize);
         if (sizePx > 3) {
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(0,0,0,${grid.lineAlpha})`;
+            // Parse hex color to rgb to apply alpha
+            const hex = grid.color || '#000000';
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            ctx.strokeStyle = `rgba(${r},${g},${b},${grid.lineAlpha})`;
             ctx.lineWidth = 1;
             const offX = grid.offsetX % sizePx;
             const offY = grid.offsetY % sizePx;
@@ -534,17 +539,19 @@ const CanvasBoard = ({
 
             const projection = projectPointWithReference({ rawPoint: p, anchorPose, reference: segmentReference, reverse: reverseDrawing, halfRobotLengthPx: unitToPx(robot.length) / 2, snap45, baseAngles: SNAP_45_BASE_ANGLES });
             const previewPose = { x: projection.center.x, y: projection.center.y, theta: projection.theta };
-            const anchorDisplay = getReferencePoint(anchorPose, segmentReference, unitToPx(robot.length) / 2);
-            const previewDisplay = getReferencePoint(previewPose, segmentReference, unitToPx(robot.length) / 2);
+
+            // CRITICAL: The projection line must always go from Center to Center
+            // The visual reference (tip vs center) is handled by the geometry calculation for the pose position
+            // but the line itself should visually connect the centers of the robots
             setGhost({
                 x: previewPose.x,
                 y: previewPose.y,
                 theta: previewPose.theta,
                 reference: segmentReference,
-                displayX: previewDisplay.x,
-                displayY: previewDisplay.y,
-                originX: anchorDisplay.x,
-                originY: anchorDisplay.y,
+                displayX: previewPose.x, // Always center
+                displayY: previewPose.y, // Always center
+                originX: anchorPose.x,   // Always center
+                originY: anchorPose.y,   // Always center
                 active: true,
             });
 

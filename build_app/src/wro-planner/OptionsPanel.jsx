@@ -165,6 +165,15 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                     <span className="option-field__value">{Math.round(grid.lineAlpha * 100)}%</span>
                                 </div>
                             </div>
+                            <div className="option-field">
+                                <span className="option-field__label">Color de líneas</span>
+                                <input
+                                    type="color"
+                                    className="option-field__control option-field__control--color"
+                                    value={grid.color || '#000000'}
+                                    onChange={e => setGrid(g => ({ ...g, color: e.target.value }))}
+                                />
+                            </div>
                             <div className="option-card__grid option-card__grid--two">
                                 <div className="option-field option-field--range">
                                     <div className="option-field__label">Offset X</div>

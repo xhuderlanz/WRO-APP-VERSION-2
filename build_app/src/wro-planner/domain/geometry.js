@@ -159,13 +159,15 @@ export const projectPointWithReference = ({
     snap45,
     baseAngles = SNAP_45_BASE_ANGLES
 }) => {
-    const anchorRefPoint = reference === 'tip'
-        ? getReferencePoint(anchorPose, 'tip', halfRobotLengthPx)
-        : { x: anchorPose.x, y: anchorPose.y };
+    // CRITICAL: The trajectory ALWAYS starts from the robot's CENTER (anchorPose.x, anchorPose.y)
+    // The reference mode only affects the visual display, not the trajectory calculation
+    const anchorCenter = { x: anchorPose.x, y: anchorPose.y };
 
-    const dx = rawPoint.x - anchorRefPoint.x;
-    const dy = rawPoint.y - anchorRefPoint.y;
+    // Calculate the direction and distance from robot center to cursor
+    const dx = rawPoint.x - anchorCenter.x;
+    const dy = rawPoint.y - anchorCenter.y;
     let distanceRef = Math.hypot(dx, dy);
+
     if (distanceRef < 1e-6) {
         const thetaIdle = reverse ? normalizeAngle(anchorPose.theta + Math.PI) : anchorPose.theta;
         return {
@@ -183,8 +185,8 @@ export const projectPointWithReference = ({
             const ux = Math.cos(baseAngle);
             const uy = Math.sin(baseAngle);
             const projection = dx * ux + dy * uy;
-            const projX = anchorRefPoint.x + ux * projection;
-            const projY = anchorRefPoint.y + uy * projection;
+            const projX = anchorCenter.x + ux * projection;
+            const projY = anchorCenter.y + uy * projection;
             const error = Math.hypot(projX - rawPoint.x, projY - rawPoint.y);
             const thetaCandidate = projection >= 0 ? baseAngle : normalizeAngle(baseAngle + Math.PI);
             const distanceCandidate = Math.abs(projection);
@@ -199,14 +201,21 @@ export const projectPointWithReference = ({
     }
 
     const facingTheta = reverse ? normalizeAngle(travelTheta + Math.PI) : normalizeAngle(travelTheta);
-    let centerX;
-    let centerY;
+
+    // Calculate the new center position
+    let centerX, centerY;
+
     if (reference === 'tip') {
-        const finalTipX = anchorRefPoint.x + Math.cos(travelTheta) * distanceRef;
-        const finalTipY = anchorRefPoint.y + Math.sin(travelTheta) * distanceRef;
-        centerX = finalTipX - Math.cos(facingTheta) * halfRobotLengthPx;
-        centerY = finalTipY - Math.sin(facingTheta) * halfRobotLengthPx;
+        // If reference is tip, the projected point (based on rawPoint) is where the TIP should be.
+        // So the center is shifted backwards by halfRobotLength.
+        // We use the projected point (anchor + vector) instead of rawPoint directly to respect snapping if active
+        const projectedTipX = anchorPose.x + Math.cos(travelTheta) * distanceRef;
+        const projectedTipY = anchorPose.y + Math.sin(travelTheta) * distanceRef;
+
+        centerX = projectedTipX - Math.cos(facingTheta) * halfRobotLengthPx;
+        centerY = projectedTipY - Math.sin(facingTheta) * halfRobotLengthPx;
     } else {
+        // If reference is center, the projected point IS the center.
         centerX = anchorPose.x + Math.cos(travelTheta) * distanceRef;
         centerY = anchorPose.y + Math.sin(travelTheta) * distanceRef;
     }
