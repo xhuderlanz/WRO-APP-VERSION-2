@@ -183,17 +183,20 @@ const CanvasBoard = ({
         // Sections
         sections.forEach(s => {
             if (!s.isVisible || s.points.length === 0) return;
+            // Calculate start pose for the section
+            const sectionStartPose = computePoseUpToSection(sections, initialPose, s.id, unitToPx);
+
             ctx.beginPath();
             ctx.strokeStyle = s.color;
             ctx.lineWidth = 3;
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
-            ctx.moveTo(s.points[0].x, s.points[0].y);
-            for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
+            ctx.moveTo(sectionStartPose.x, sectionStartPose.y);
+            for (let i = 0; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
             ctx.stroke();
 
             // Draw direction arrows on segments
-            let arrowPose = computePoseUpToSection(sections, initialPose, s.id, unitToPx);
+            let arrowPose = sectionStartPose;
             s.points.forEach((pt) => {
                 const reference = pt.reference || 'center';
                 const startDisplay = getReferencePoint(arrowPose, reference, unitToPx(robot.length) / 2);
@@ -299,7 +302,20 @@ const CanvasBoard = ({
         }
 
         // Ghost
-        if (ghost && ghost.active) drawRobot(ctx, ghost, true);
+        if (ghost && ghost.active) {
+            // Draw preview line
+            if (currentSection) {
+                ctx.beginPath();
+                ctx.strokeStyle = currentSection.color || '#000';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.moveTo(ghost.originX, ghost.originY);
+                ctx.lineTo(ghost.displayX, ghost.displayY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+            drawRobot(ctx, ghost, true);
+        }
 
         // Robot
         if (isRunning) {
