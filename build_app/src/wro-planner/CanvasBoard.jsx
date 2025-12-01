@@ -62,29 +62,52 @@ const CanvasBoard = ({
 
     const currentSection = sections.find(s => s.id === selectedSectionId);
 
-    // Keyboard handler for Space key
+    // Keyboard handler
+    const handleKeyDown = useCallback((e) => {
+        if (e.code === 'Space' && !e.repeat) {
+            e.preventDefault();
+            setReverseDrawing(prev => !prev);
+        }
+        // Delete point
+        if ((e.key === 'Delete' || e.key === 'Backspace') && !isRunning) {
+            // Check if a point is selected (dragging.sectionId is set)
+            if (dragging.sectionId && dragging.index > -1) {
+                setSections(prev => {
+                    const updated = prev.map(s => {
+                        if (s.id !== dragging.sectionId) return s;
+                        // Filter out the deleted point and reset heading for the next point
+                        const newPts = s.points
+                            .filter((_, i) => i !== dragging.index)
+                            .map((pt, i) => {
+                                // The point that falls into the deleted index (was i+1, now i) needs recalc
+                                if (i === dragging.index) {
+                                    return { ...pt, heading: undefined };
+                                }
+                                return pt;
+                            });
+                        return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
+                    });
+                    return recalcAllFollowingSections({ sections: updated, changedSectionId: dragging.sectionId, initialPose, unitToPx });
+                });
+                setDragging({ active: false, sectionId: null, index: -1 });
+            }
+        }
+    }, [dragging, isRunning, sections, initialPose, setReverseDrawing, setSections, setDragging, pxToUnit, unitToPx]);
+
+    const handleKeyUp = useCallback((e) => {
+        if (e.code === 'Space') {
+            e.preventDefault();
+        }
+    }, []);
+
     useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.code === 'Space' && !e.repeat) {
-                e.preventDefault();
-                setReverseDrawing(prev => !prev);
-            }
-        };
-
-        const handleKeyUp = (e) => {
-            if (e.code === 'Space') {
-                e.preventDefault();
-            }
-        };
-
         window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
-
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
         };
-    }, [setReverseDrawing]);
+    }, [handleKeyDown, handleKeyUp]);
 
     // Helper to get canvas position
     const canvasPos = useCallback((e, applySnapping = true) => {
@@ -244,7 +267,10 @@ const CanvasBoard = ({
             if ((selectedSectionId === s.id && drawMode) || !drawMode) {
                 s.points.forEach((p, i) => {
                     ctx.beginPath();
-                    const isActive = (dragging.active && dragging.sectionId === s.id && dragging.index === i) || (hoverNode.sectionId === s.id && hoverNode.index === i);
+                    // Highlight if this node is the one selected (dragging.sectionId/index) OR if it is being hovered
+                    const isSelected = dragging.sectionId === s.id && dragging.index === i;
+                    const isHovered = hoverNode.sectionId === s.id && hoverNode.index === i;
+                    const isActive = isSelected || isHovered;
                     const isLastActive = drawMode && selectedSectionId === s.id && i === s.points.length - 1;
 
                     const radius = (isActive || isLastActive) ? 6 : 4;
@@ -397,11 +423,68 @@ const CanvasBoard = ({
         draw();
     }, [draw]);
 
+    // Helper to detect click on a line segment
+    const hitTestSegment = (startPose, points, p, threshold = 8) => {
+        // Check segment from startPose to first point
+        if (points.length > 0) {
+            const p1 = startPose;
+            const p2 = points[0];
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const lenSq = dx * dx + dy * dy;
+            const len = Math.sqrt(lenSq);
+
+            if (len > 0) {
+                const t = ((p.x - p1.x) * dx + (p.y - p1.y) * dy) / lenSq;
+                if (t >= 0 && t <= 1) {
+                    const projX = p1.x + t * dx;
+                    const projY = p1.y + t * dy;
+                    const dist = Math.hypot(p.x - projX, p.y - projY);
+                    if (dist <= threshold) {
+                        return { index: -1, point: { x: projX, y: projY } };
+                    }
+                }
+            }
+        }
+
+        // Check segments between points
+        if (points.length < 2) return null;
+        for (let i = 0; i < points.length - 1; i++) {
+            const p1 = points[i];
+            const p2 = points[i + 1];
+
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const lenSq = dx * dx + dy * dy;
+            const len = Math.sqrt(lenSq);
+
+            if (len === 0) continue;
+
+            const t = ((p.x - p1.x) * dx + (p.y - p1.y) * dy) / lenSq;
+
+            if (t >= 0 && t <= 1) {
+                const projX = p1.x + t * dx;
+                const projY = p1.y + t * dy;
+                const dist = Math.hypot(p.x - projX, p.y - projY);
+
+                if (dist <= threshold) {
+                    return { index: i, point: { x: projX, y: projY } };
+                }
+            }
+        }
+        return null;
+    };
+
     const onCanvasDown = (e) => {
         if (isSettingOrigin) return;
         if (e.button === 2) {
             e.preventDefault();
             if (!drawMode || !currentSection) return;
+            // If dragging/selected, deselect
+            if (dragging.active || dragging.sectionId) {
+                setDragging({ active: false, sectionId: null, index: -1 });
+                return;
+            }
             rightPressActiveRef.current = true;
             removeLastPointFromCurrentSection();
             clearInterval(rightEraseTimerRef.current);
@@ -419,6 +502,8 @@ const CanvasBoard = ({
             return;
         }
         if (e.button !== 0) return;
+
+        // Draw Mode: Add points to end
         if (drawMode && currentSection) {
             const basePose = currentSection.points.length
                 ? getLastPoseOfSection(currentSection, sections, initialPose, unitToPx)
@@ -431,10 +516,60 @@ const CanvasBoard = ({
             drawThrottleRef.current.lastAutoAddTs = 0;
             return;
         }
-        if (drawMode) return;
-        const p = canvasPos(e);
-        if (Math.hypot(initialPose.x - p.x, initialPose.y - p.y) <= 10) { setDraggingStart(true); return; }
-        if (currentSection) { const idx = hitTestNode(currentSection.points, p, 8); if (idx > -1) setDragging({ active: true, sectionId: currentSection.id, index: idx }); }
+
+        // Edit Mode (Not Draw Mode)
+        if (!drawMode) {
+            const p = canvasPos(e);
+
+            // 1. Check if clicking on initial pose
+            if (Math.hypot(initialPose.x - p.x, initialPose.y - p.y) <= 10) {
+                setDraggingStart(true);
+                return;
+            }
+
+            // 2. Check if clicking on existing point (Select/Drag)
+            if (currentSection) {
+                const idx = hitTestNode(currentSection.points, p, 8);
+                if (idx > -1) {
+                    setDragging({ active: true, sectionId: currentSection.id, index: idx });
+                    return;
+                }
+
+                // 3. Check if clicking on a segment (Insert Point)
+                const startPose = computePoseUpToSection(sections, initialPose, currentSection.id, unitToPx);
+                const hitSegment = hitTestSegment(startPose, currentSection.points, p, 8);
+                if (hitSegment) {
+                    const { index, point } = hitSegment;
+                    // Insert point at index + 1
+                    // If index is -1, insert at 0
+                    const prevPoint = index === -1 ? { ...startPose, reference: 'center', reverse: false } : currentSection.points[index];
+                    const newPoint = {
+                        x: point.x,
+                        y: point.y,
+                        reverse: prevPoint.reverse,
+                        reference: prevPoint.reference,
+                        heading: undefined // Allow auto-calculation based on segment
+                    };
+
+                    setSections(prev => {
+                        const updated = prev.map(s => {
+                            if (s.id !== currentSection.id) return s;
+                            const newPts = [...s.points];
+                            newPts.splice(index + 1, 0, newPoint);
+                            return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
+                        });
+                        return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx });
+                    });
+
+                    // Select the newly created point
+                    setDragging({ active: true, sectionId: currentSection.id, index: index + 1 });
+                    return;
+                }
+
+                // If clicked on empty space, deselect
+                setDragging({ active: false, sectionId: null, index: -1 });
+            }
+        }
     };
 
     const onCanvasMove = (e) => {
@@ -463,12 +598,10 @@ const CanvasBoard = ({
             const newInitialPose = { ...initialPose, x: p.x, y: p.y };
             setInitialPose(newInitialPose);
 
-            // Only recalculate actions for the first section if it has points
             setSections(prev => {
                 if (prev.length === 0 || prev[0].points.length === 0) return prev;
 
                 const firstSection = prev[0];
-                // Strip headings to force recalculation based on new geometry
                 const pointsWithoutHeadings = firstSection.points.map(({ heading, ...rest }) => rest);
 
                 const newActions = buildActionsFromPolyline(
@@ -477,7 +610,6 @@ const CanvasBoard = ({
                     pxToUnit
                 );
 
-                // Regenerate points from actions to ensure consistency (and correct headings)
                 const newPoints = pointsFromActions(newActions, newInitialPose, unitToPx);
 
                 const newSections = prev.map((s, idx) =>
@@ -494,18 +626,14 @@ const CanvasBoard = ({
                 const updatedSections = prev.map(s => {
                     if (s.id !== dragging.sectionId) return s;
 
-                    // Update the dragged point's position - other points stay fixed
                     const tempPoints = s.points.map((pt, i) =>
-                        i === dragging.index ? { ...pt, x: p.x, y: p.y } : pt
+                        i === dragging.index ? { ...pt, x: p.x, y: p.y, heading: undefined } : pt
                     );
 
-                    // Recalculate actions based on new point positions
-                    // Strip headings to force recalculation based on new geometry
                     const pointsWithoutHeadings = tempPoints.map(({ heading, ...rest }) => rest);
                     const startPose = computePoseUpToSection(prev, initialPose, s.id, unitToPx);
                     const newActions = buildActionsFromPolyline(pointsWithoutHeadings, startPose, pxToUnit);
 
-                    // Regenerate points from actions to ensure consistency
                     const finalPoints = pointsFromActions(newActions, startPose, unitToPx);
 
                     return { ...s, points: finalPoints, actions: newActions };
@@ -540,18 +668,15 @@ const CanvasBoard = ({
             const projection = projectPointWithReference({ rawPoint: p, anchorPose, reference: segmentReference, reverse: reverseDrawing, halfRobotLengthPx: unitToPx(robot.length) / 2, snap45, baseAngles: SNAP_45_BASE_ANGLES });
             const previewPose = { x: projection.center.x, y: projection.center.y, theta: projection.theta };
 
-            // CRITICAL: The projection line must always go from Center to Center
-            // The visual reference (tip vs center) is handled by the geometry calculation for the pose position
-            // but the line itself should visually connect the centers of the robots
             setGhost({
                 x: previewPose.x,
                 y: previewPose.y,
                 theta: previewPose.theta,
                 reference: segmentReference,
-                displayX: previewPose.x, // Always center
-                displayY: previewPose.y, // Always center
-                originX: anchorPose.x,   // Always center
-                originY: anchorPose.y,   // Always center
+                displayX: previewPose.x,
+                displayY: previewPose.y,
+                originX: anchorPose.x,
+                originY: anchorPose.y,
                 active: true,
             });
 
@@ -594,7 +719,10 @@ const CanvasBoard = ({
             return;
         }
         setDraggingStart(false);
-        setDragging({ active: false, sectionId: null, index: -1 });
+        // Do NOT clear dragging here to allow selection for deletion
+        // Only stop the "active" dragging (movement)
+        setDragging(prev => ({ ...prev, active: false }));
+
         if (drawSessionRef.current.active) {
             drawSessionRef.current = { active: false, lastPoint: null, addedDuringDrag: drawSessionRef.current.addedDuringDrag };
         }
