@@ -39,6 +39,8 @@ const CanvasBoard = ({
     setDraggingStart,
     cursorGuide,
     setCursorGuide,
+    cursorGuideColor,
+    cursorGuideLineWidth,
     drawSessionRef,
     drawThrottleRef,
     rightEraseTimerRef,
@@ -87,7 +89,7 @@ const CanvasBoard = ({
                             });
                         return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
                     });
-                    return recalcAllFollowingSections({ sections: updated, changedSectionId: dragging.sectionId, initialPose, unitToPx });
+                    return recalcAllFollowingSections({ sections: updated, changedSectionId: dragging.sectionId, initialPose, unitToPx, pxToUnit });
                 });
                 setDragging({ active: false, sectionId: null, index: -1 });
             }
@@ -150,25 +152,52 @@ const CanvasBoard = ({
 
         if (robotImgObj) {
             ctx.globalAlpha = isGhost ? 0.4 : (robot.opacity ?? 1);
+            // TODO: Handle image offset if needed, for now assume image center is robot center
+            // If we want image to respect offset, we need to know where the "wheels" are in the image.
+            // For now, let's keep image centered on the pose.
             ctx.drawImage(robotImgObj, -lPx / 2, -wPx / 2, lPx, wPx);
         } else {
             ctx.globalAlpha = isGhost ? 0.4 : (robot.opacity ?? 1);
             ctx.fillStyle = isGhost ? `${robot.color}66` : robot.color;
-            ctx.fillRect(-lPx / 2, -wPx / 2, lPx, wPx);
+
+            const wheelOffsetVal = robot.wheelOffset !== undefined ? robot.wheelOffset : (robot.length / 2);
+            const wheelOffsetPx = unitToPx(wheelOffsetVal);
+
+            // Coordinate system: X+ is forward (direction of arrow)
+            // Wheel Axis is at (0,0)
+            // Front of robot is at +wheelOffsetPx
+            // Back of robot is at +wheelOffsetPx - lPx
+            const frontX = wheelOffsetPx;
+            const backX = wheelOffsetPx - lPx;
+
+            ctx.fillRect(backX, -wPx / 2, lPx, wPx);
             ctx.strokeStyle = isGhost ? '#666' : '#333';
             ctx.lineWidth = 2;
-            ctx.strokeRect(-lPx / 2, -wPx / 2, lPx, wPx);
+            ctx.strokeRect(backX, -wPx / 2, lPx, wPx);
 
-            // Wheels
+            // Wheels (Centered at 0,0)
             ctx.fillStyle = '#111';
-            ctx.fillRect(-lPx / 4, -wPx / 2 - 4, lPx / 2, 4);
-            ctx.fillRect(-lPx / 4, wPx / 2, lPx / 2, 4);
+            const wheelWidth = lPx / 2;
+            const wheelX = -wheelWidth / 2;
+
+            // Draw Axis Line (at 0,0)
+            ctx.beginPath();
+            ctx.moveTo(0, -wPx / 2);
+            ctx.lineTo(0, wPx / 2);
+            ctx.strokeStyle = '#ff0000';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // Draw Wheels
+            ctx.fillRect(wheelX, -wPx / 2 - 4, wheelWidth, 4);
+            ctx.fillRect(wheelX, wPx / 2, wheelWidth, 4);
 
             // Direction arrow
             ctx.beginPath();
             ctx.moveTo(0, 0);
             ctx.lineTo(lPx / 2, 0);
             ctx.strokeStyle = isGhost ? '#fff' : '#000';
+            ctx.lineWidth = 2; // Restore line width for arrow
             ctx.stroke();
             ctx.globalAlpha = 1; // Reset alpha
         }
@@ -229,7 +258,7 @@ const CanvasBoard = ({
             let arrowPose = sectionStartPose;
             s.points.forEach((pt) => {
                 const reference = pt.reference || 'center';
-                const startDisplay = getReferencePoint(arrowPose, reference, unitToPx(robot.length) / 2);
+                const startDisplay = getReferencePoint(arrowPose, reference, unitToPx(robot.wheelOffset ?? robot.length / 2));
                 const dx = pt.x - arrowPose.x;
                 const dy = pt.y - arrowPose.y;
                 const dist = Math.hypot(dx, dy);
@@ -241,7 +270,7 @@ const CanvasBoard = ({
                         : normalizeAngle(pt.reverse ? headingToPoint + Math.PI : headingToPoint);
                 }
                 const endPose = { x: pt.x, y: pt.y, theta: segmentTheta };
-                const endDisplay = getReferencePoint(endPose, reference, unitToPx(robot.length) / 2);
+                const endDisplay = getReferencePoint(endPose, reference, unitToPx(robot.wheelOffset ?? robot.length / 2));
 
                 // Draw arrow in the middle of the segment
                 const midX = (startDisplay.x + endDisplay.x) / 2;
@@ -394,8 +423,13 @@ const CanvasBoard = ({
         // Cursor Guide
         if (cursorGuide.visible) {
             ctx.save();
-            ctx.strokeStyle = 'rgba(100, 116, 139, 0.45)';
-            ctx.lineWidth = 1;
+            // Convert hex to rgba with alpha
+            const hex = cursorGuideColor || '#64748b';
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.45)`;
+            ctx.lineWidth = cursorGuideLineWidth || 1;
             ctx.setLineDash([6, 6]);
             ctx.beginPath();
             ctx.moveTo(cursorGuide.x, 0);
@@ -558,7 +592,7 @@ const CanvasBoard = ({
                             newPts.splice(index + 1, 0, newPoint);
                             return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
                         });
-                        return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx });
+                        return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx, pxToUnit });
                     });
 
                     // Select the newly created point
@@ -616,7 +650,7 @@ const CanvasBoard = ({
                     idx === 0 ? { ...s, points: newPoints, actions: newActions } : s
                 );
 
-                return recalcAllFollowingSections({ sections: newSections, changedSectionId: prev[0].id, initialPose: newInitialPose, unitToPx });
+                return recalcAllFollowingSections({ sections: newSections, changedSectionId: prev[0].id, initialPose: newInitialPose, unitToPx, pxToUnit });
             });
             return;
         }
@@ -638,7 +672,7 @@ const CanvasBoard = ({
 
                     return { ...s, points: finalPoints, actions: newActions };
                 });
-                return recalcAllFollowingSections({ sections: updatedSections, changedSectionId: dragging.sectionId, initialPose, unitToPx });
+                return recalcAllFollowingSections({ sections: updatedSections, changedSectionId: dragging.sectionId, initialPose, unitToPx, pxToUnit });
             });
             return;
         }
@@ -665,7 +699,7 @@ const CanvasBoard = ({
                 };
             }
 
-            const projection = projectPointWithReference({ rawPoint: p, anchorPose, reference: segmentReference, reverse: reverseDrawing, halfRobotLengthPx: unitToPx(robot.length) / 2, snap45, baseAngles: SNAP_45_BASE_ANGLES });
+            const projection = projectPointWithReference({ rawPoint: p, anchorPose, reference: segmentReference, reverse: reverseDrawing, halfRobotLengthPx: unitToPx(robot.wheelOffset ?? robot.length / 2), snap45, baseAngles: SNAP_45_BASE_ANGLES });
             const previewPose = { x: projection.center.x, y: projection.center.y, theta: projection.theta };
 
             setGhost({
@@ -695,7 +729,7 @@ const CanvasBoard = ({
                             const newPts = [...s.points, { ...centerPoint, reverse: reverseDrawing, reference: segmentReference, heading: projection.theta }];
                             return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
                         });
-                        return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx });
+                        return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx, pxToUnit });
                     });
                     drawSessionRef.current = {
                         active: true,
@@ -754,7 +788,7 @@ const CanvasBoard = ({
             ? getLastPoseOfSection(currentSection, sections, initialPose, unitToPx)
             : computePoseUpToSection(sections, initialPose, currentSection.id, unitToPx);
         const segmentReference = referenceMode;
-        const projection = projectPointWithReference({ rawPoint: p, anchorPose: basePose, reference: segmentReference, reverse: reverseDrawing, halfRobotLengthPx: unitToPx(robot.length) / 2, snap45, baseAngles: SNAP_45_BASE_ANGLES });
+        const projection = projectPointWithReference({ rawPoint: p, anchorPose: basePose, reference: segmentReference, reverse: reverseDrawing, halfRobotLengthPx: unitToPx(robot.wheelOffset ?? robot.length / 2), snap45, baseAngles: SNAP_45_BASE_ANGLES });
         const centerPoint = projection.center;
         setSections(prev => {
             const updated = prev.map(s => {
@@ -762,7 +796,7 @@ const CanvasBoard = ({
                 const newPts = [...s.points, { ...centerPoint, reverse: reverseDrawing, reference: segmentReference, heading: projection.theta }];
                 return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
             });
-            return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx });
+            return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx, pxToUnit });
         });
         drawSessionRef.current = { active: false, lastPoint: null, addedDuringDrag: false };
         drawThrottleRef.current.lastAutoAddTs = Date.now();
