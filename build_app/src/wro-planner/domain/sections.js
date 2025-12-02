@@ -1,7 +1,7 @@
-import { DEG2RAD } from "./constants";
-import { pointsFromActions, computePoseUpToSection, buildActionsFromPolyline } from "./geometry";
+import { DEG2RAD, RAD2DEG } from "./constants";
+import { pointsFromActions, computePoseUpToSection, buildActionsFromPolyline, getPoseAfterActions } from "./geometry";
 
-export const recalcAllFollowingSections = ({ sections, changedSectionId, initialPose, unitToPx }) => {
+export const recalcAllFollowingSections = ({ sections, changedSectionId, initialPose, unitToPx, pxToUnit }) => {
     const changedIndex = sections.findIndex(s => s.id === changedSectionId);
     if (changedIndex === -1) return sections;
 
@@ -25,11 +25,41 @@ export const recalcAllFollowingSections = ({ sections, changedSectionId, initial
 
     for (let i = 0; i < sectionsCopy.length; i++) {
         const startPose = { ...runningPose };
+
+        // Store start angle
+        sectionsCopy[i].startAngle = startPose.theta * RAD2DEG;
+
         if (i > changedIndex) {
-            const newPoints = pointsFromActions(sectionsCopy[i].actions, startPose, unitToPx);
+            // Instead of regenerating points from actions (which rotates the section if start angle changes),
+            // we want to preserve the absolute orientation of the section (points) and just translate it.
+
+            // 1. Get the OLD start pose of this section (from the original sections array)
+            const oldStartPose = computePoseUpToSection(sections, initialPose, sections[i].id, unitToPx);
+
+            // 2. Calculate the translation delta
+            const dx = startPose.x - oldStartPose.x;
+            const dy = startPose.y - oldStartPose.y;
+
+            // 3. Translate all points
+            const newPoints = sectionsCopy[i].points.map(p => ({
+                ...p,
+                x: p.x + dx,
+                y: p.y + dy
+            }));
+
             sectionsCopy[i] = { ...sectionsCopy[i], points: newPoints };
+
+            // 4. Recalculate actions based on the new start pose and translated points
+            // This will automatically adjust the first action (turn/move) to connect correctly
+            const newActions = buildActionsFromPolyline(newPoints, startPose, pxToUnit);
+            sectionsCopy[i].actions = newActions;
         }
+
+        // Advance running pose for the next section
         runningPose = advancePose(startPose, sectionsCopy[i].actions);
+
+        // Store end angle
+        sectionsCopy[i].endAngle = runningPose.theta * RAD2DEG;
     }
 
     return sectionsCopy;
@@ -37,8 +67,16 @@ export const recalcAllFollowingSections = ({ sections, changedSectionId, initial
 
 export const recalcSectionFromPoints = ({ section, sections, initialPose, pxToUnit, unitToPx }) => {
     // We need to compute pose up to the START of this section.
-    // So we pass section.id to computePoseUpToSection, which iterates until it finds the section.
     const start = computePoseUpToSection(sections, initialPose, section.id, unitToPx);
     const acts = buildActionsFromPolyline(section.points, start, pxToUnit);
-    return { ...section, actions: acts };
+
+    // Calculate end pose to store endAngle
+    const endPose = getPoseAfterActions(start, acts, unitToPx);
+
+    return {
+        ...section,
+        actions: acts,
+        startAngle: start.theta * RAD2DEG,
+        endAngle: endPose.theta * RAD2DEG
+    };
 };

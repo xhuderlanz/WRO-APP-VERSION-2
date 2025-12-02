@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { IconTarget } from "./icons";
 import { FIELD_PRESETS, DEG2RAD, RAD2DEG } from "./domain/constants";
 
-const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOpacity, setBgOpacity, grid, setGrid, robot, setRobot, initialPose, setInitialPose, handleBgUpload, handleRobotImageUpload, setIsSettingOrigin, unit, setUnit }) => {
+const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOpacity, setBgOpacity, grid, setGrid, robot, setRobot, initialPose, setInitialPose, handleBgUpload, handleRobotImageUpload, setIsSettingOrigin, unit, setUnit, cursorGuideColor, setCursorGuideColor, cursorGuideLineWidth, setCursorGuideLineWidth }) => {
     const isMM = unit === 'mm';
     const sizeMin = isMM ? 1 : 0.1;
     const sizeMax = isMM ? 50 : 5;
@@ -220,6 +220,32 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                     </div>
                                 </div>
                             </div>
+                            <div className="option-divider" />
+                            <div className="option-card__grid option-card__grid--two">
+                                <div className="option-field">
+                                    <span className="option-field__label">Color de guía del cursor</span>
+                                    <input
+                                        type="color"
+                                        className="option-field__control option-field__control--color"
+                                        value={cursorGuideColor || '#64748b'}
+                                        onChange={e => setCursorGuideColor(e.target.value)}
+                                    />
+                                </div>
+                                <div className="option-field option-field--range">
+                                    <div className="option-field__label">Grosor de línea</div>
+                                    <div className="option-field__controls">
+                                        <input
+                                            type="range"
+                                            min={1}
+                                            max={5}
+                                            step={1}
+                                            value={cursorGuideLineWidth}
+                                            onChange={e => setCursorGuideLineWidth(Number(e.target.value))}
+                                        />
+                                        <span className="option-field__value">{cursorGuideLineWidth}px</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </section>
 
@@ -246,6 +272,15 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                         className="option-field__control"
                                         value={robot.length}
                                         onChange={e => setRobot(r => ({ ...r, length: Number(e.target.value) || 0 }))}
+                                    />
+                                </label>
+                                <label className="option-field">
+                                    <span className="option-field__label">Distancia frontal a ruedas ({unit})</span>
+                                    <input
+                                        type="number"
+                                        className="option-field__control"
+                                        value={robot.wheelOffset ?? 0}
+                                        onChange={e => setRobot(r => ({ ...r, wheelOffset: Number(e.target.value) || 0 }))}
                                     />
                                 </label>
                                 <label className="option-field">

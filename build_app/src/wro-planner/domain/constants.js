@@ -16,6 +16,6 @@ export const FIELD_PRESETS = [
 ];
 
 export const DEFAULT_GRID = { cellSize: 1, pixelsPerUnit: 5, lineAlpha: 0.35, offsetX: 0, offsetY: 0, color: "#000000" };
-export const DEFAULT_ROBOT = { width: 18, length: 20, color: "#0ea5e9", imageSrc: null, opacity: 1 };
+export const DEFAULT_ROBOT = { width: 18, length: 20, color: "#0ea5e9", imageSrc: null, opacity: 1, wheelOffset: 10 };
 export const ZOOM_LIMITS = { min: 0.5, max: 2, step: 0.25 };
 export const SNAP_45_BASE_ANGLES = [0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4];

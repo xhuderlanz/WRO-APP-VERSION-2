@@ -69,6 +69,8 @@ export default function WROPlaybackPlanner() {
     const [zoom, setZoom] = useState(1);
     const [canvasBaseSize, setCanvasBaseSize] = useState({ width: 0, height: 0 });
     const [cursorGuide, setCursorGuide] = useState({ x: 0, y: 0, visible: false });
+    const [cursorGuideColor, setCursorGuideColor] = useState('#64748b');
+    const [cursorGuideLineWidth, setCursorGuideLineWidth] = useState(1);
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
 
     const drawSessionRef = useRef({ active: false, lastPoint: null, addedDuringDrag: false });
@@ -174,7 +176,7 @@ export default function WROPlaybackPlanner() {
                 const newPoints = pointsFromActions(newActions, computePoseUpToSection(prev, initialPose, sectionId, unitToPx), unitToPx);
                 return { ...s, actions: newActions, points: newPoints };
             });
-            return recalcAllFollowingSections({ sections: newSections, changedSectionId: sectionId, initialPose, unitToPx });
+            return recalcAllFollowingSections({ sections: newSections, changedSectionId: sectionId, initialPose, unitToPx, pxToUnit });
         });
     }, [initialPose, unitToPx]);
 
@@ -186,7 +188,7 @@ export default function WROPlaybackPlanner() {
                 const newPts = s.points.slice(0, -1);
                 return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
             });
-            return recalcAllFollowingSections({ sections: newSections, changedSectionId: currentSection.id, initialPose, unitToPx });
+            return recalcAllFollowingSections({ sections: newSections, changedSectionId: currentSection.id, initialPose, unitToPx, pxToUnit });
         });
     }, [currentSection, initialPose, pxToUnit, unitToPx]);
 
@@ -358,6 +360,8 @@ export default function WROPlaybackPlanner() {
                             setDraggingStart={setDraggingStart}
                             cursorGuide={cursorGuide}
                             setCursorGuide={setCursorGuide}
+                            cursorGuideColor={cursorGuideColor}
+                            cursorGuideLineWidth={cursorGuideLineWidth}
                             drawSessionRef={drawSessionRef}
                             drawThrottleRef={drawThrottleRef}
                             rightEraseTimerRef={rightEraseTimerRef}
@@ -404,6 +408,10 @@ export default function WROPlaybackPlanner() {
                 setIsSettingOrigin={setIsSettingOrigin}
                 unit={unit}
                 setUnit={setUnit}
+                cursorGuideColor={cursorGuideColor}
+                setCursorGuideColor={setCursorGuideColor}
+                cursorGuideLineWidth={cursorGuideLineWidth}
+                setCursorGuideLineWidth={setCursorGuideLineWidth}
             />
 
             <footer className="footer-note">Dimensiones del tapete: 2362mm × 1143mm.</footer>
