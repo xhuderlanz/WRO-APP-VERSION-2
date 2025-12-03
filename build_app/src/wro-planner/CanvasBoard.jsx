@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
 import { DEG2RAD, RAD2DEG, SNAP_45_BASE_ANGLES } from "./domain/constants";
 import { normalizeAngle, getReferencePoint, getLastPoseOfSection, projectPointWithReference, pointsFromActions, buildActionsFromPolyline, computePoseUpToSection } from "./domain/geometry";
-import { recalcSectionFromPoints, recalcAllFollowingSections } from "./domain/sections";
+import { recalcAfterEditStable as recalcAllFollowingSections, recalcSectionFromPointsStable as recalcSectionFromPoints } from "./domain/sections_stable";
 
 const CanvasBoard = ({
     fieldKey,
@@ -226,8 +226,8 @@ const CanvasBoard = ({
         if (sizePx > 3) {
             ctx.beginPath();
             // Parse hex color to rgb to apply alpha
-            const hex = grid.color || '#000000';
-            const r = parseInt(hex.slice(1, 3), 16);
+            const hex = grid.color || '#ffffffff';
+            const r = parseInt(hex.slice(1, 40), 16);
             const g = parseInt(hex.slice(3, 5), 16);
             const b = parseInt(hex.slice(5, 7), 16);
             ctx.strokeStyle = `rgba(${r},${g},${b},${grid.lineAlpha})`;

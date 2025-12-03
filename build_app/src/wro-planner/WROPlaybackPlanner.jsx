@@ -26,9 +26,9 @@ import {
     projectPointWithReference
 } from "./domain/geometry";
 import {
-    recalcAllFollowingSections,
-    recalcSectionFromPoints
-} from "./domain/sections";
+    recalcAfterEditStable as recalcAllFollowingSections,
+    recalcSectionFromPointsStable as recalcSectionFromPoints
+} from "./domain/sections_stable";
 
 export default function WROPlaybackPlanner() {
     const [fieldKey, setFieldKey] = useState(FIELD_PRESETS[0].key);
@@ -69,9 +69,9 @@ export default function WROPlaybackPlanner() {
     const [zoom, setZoom] = useState(1);
     const [canvasBaseSize, setCanvasBaseSize] = useState({ width: 0, height: 0 });
     const [cursorGuide, setCursorGuide] = useState({ x: 0, y: 0, visible: false });
-    const [cursorGuideColor, setCursorGuideColor] = useState('#64748b');
-    const [cursorGuideLineWidth, setCursorGuideLineWidth] = useState(1);
-    const [playbackSpeed, setPlaybackSpeed] = useState(1);
+    const [cursorGuideColor, setCursorGuideColor] = useState('#ff0000ff');
+    const [cursorGuideLineWidth, setCursorGuideLineWidth] = useState(4);
+    const [playbackSpeed, setPlaybackSpeed] = useState(3);
 
     const drawSessionRef = useRef({ active: false, lastPoint: null, addedDuringDrag: false });
     const drawThrottleRef = useRef({ lastAutoAddTs: 0 });

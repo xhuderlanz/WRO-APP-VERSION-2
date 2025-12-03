@@ -170,7 +170,7 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                 <input
                                     type="color"
                                     className="option-field__control option-field__control--color"
-                                    value={grid.color || '#000000'}
+                                    value={grid.color || '#ffffffff'}
                                     onChange={e => setGrid(g => ({ ...g, color: e.target.value }))}
                                 />
                             </div>
@@ -227,7 +227,7 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                     <input
                                         type="color"
                                         className="option-field__control option-field__control--color"
-                                        value={cursorGuideColor || '#64748b'}
+                                        value={cursorGuideColor || '#ff0000ff'}
                                         onChange={e => setCursorGuideColor(e.target.value)}
                                     />
                                 </div>

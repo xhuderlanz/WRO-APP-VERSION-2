@@ -33,13 +33,10 @@ export const recalcAllFollowingSections = ({ sections, changedSectionId, initial
             // For sections after the changed section, we need to translate the points
             // to preserve their absolute orientation while connecting to the new start position
 
-            // Get the old start position of this section
-            // IMPORTANT: For sections after the first following section,
-            // use sectionsCopy (updated sections) to calculate the old position correctly
-            const sectionsForOldPose = i === changedIndex + 1
-                ? sections
-                : [...sectionsCopy.slice(0, i), ...sections.slice(i)];
-            const oldStartPose = computePoseUpToSection(sectionsForOldPose, initialPose, sections[i].id, unitToPx);
+            // Get the old start position of this section from ORIGINAL sections array
+            // This ensures we always calculate the translation based on where the section
+            // started BEFORE any updates, not where it is now
+            const oldStartPose = computePoseUpToSection(sections, initialPose, sections[i].id, unitToPx);
 
             // Calculate translation delta
             const dx = startPose.x - oldStartPose.x;
