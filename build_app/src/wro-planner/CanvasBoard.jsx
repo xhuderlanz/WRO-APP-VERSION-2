@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
 import { DEG2RAD, RAD2DEG, SNAP_45_BASE_ANGLES } from "./domain/constants";
 import { normalizeAngle, getReferencePoint, getLastPoseOfSection, projectPointWithReference, pointsFromActions, buildActionsFromPolyline, computePoseUpToSection } from "./domain/geometry";
-import { recalcAfterEditStable as recalcAllFollowingSections, recalcSectionFromPointsStable as recalcSectionFromPoints } from "./domain/sections_stable";
+import { recalcAfterEditStable as recalcAllFollowingSections, recalcSectionFromPointsStable as recalcSectionFromPoints, recalcSectionsFromPointsStable } from "./domain/sections_stable";
 
 const CanvasBoard = ({
     fieldKey,
@@ -75,21 +75,12 @@ const CanvasBoard = ({
             // Check if a point is selected (dragging.sectionId is set)
             if (dragging.sectionId && dragging.index > -1) {
                 setSections(prev => {
-                    const updated = prev.map(s => {
+                    const modified = prev.map(s => {
                         if (s.id !== dragging.sectionId) return s;
-                        // Filter out the deleted point and reset heading for the next point
-                        const newPts = s.points
-                            .filter((_, i) => i !== dragging.index)
-                            .map((pt, i) => {
-                                // The point that falls into the deleted index (was i+1, now i) needs recalc
-                                if (i === dragging.index) {
-                                    return { ...pt, heading: undefined };
-                                }
-                                return pt;
-                            });
-                        return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
+                        const newPts = s.points.filter((_, i) => i !== dragging.index);
+                        return { ...s, points: newPts };
                     });
-                    return recalcAllFollowingSections({ sections: updated, changedSectionId: dragging.sectionId, initialPose, unitToPx, pxToUnit });
+                    return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
                 });
                 setDragging({ active: false, sectionId: null, index: -1 });
             }
@@ -586,13 +577,13 @@ const CanvasBoard = ({
                     };
 
                     setSections(prev => {
-                        const updated = prev.map(s => {
+                        const modified = prev.map(s => {
                             if (s.id !== currentSection.id) return s;
                             const newPts = [...s.points];
                             newPts.splice(index + 1, 0, newPoint);
-                            return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
+                            return { ...s, points: newPts };
                         });
-                        return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx, pxToUnit });
+                        return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
                     });
 
                     // Select the newly created point
@@ -635,44 +626,28 @@ const CanvasBoard = ({
             setSections(prev => {
                 if (prev.length === 0 || prev[0].points.length === 0) return prev;
 
-                const firstSection = prev[0];
-                const pointsWithoutHeadings = firstSection.points.map(({ heading, ...rest }) => rest);
+                const modified = prev.map((s, idx) => {
+                    if (idx !== 0) return s;
+                    // Keep same points, just update them in recalc
+                    return { ...s };
+                });
 
-                const newActions = buildActionsFromPolyline(
-                    pointsWithoutHeadings,
-                    newInitialPose,
-                    pxToUnit
-                );
-
-                const newPoints = pointsFromActions(newActions, newInitialPose, unitToPx);
-
-                const newSections = prev.map((s, idx) =>
-                    idx === 0 ? { ...s, points: newPoints, actions: newActions } : s
-                );
-
-                return recalcAllFollowingSections({ sections: newSections, changedSectionId: prev[0].id, initialPose: newInitialPose, unitToPx, pxToUnit });
+                return recalcSectionsFromPointsStable({ sections: modified, initialPose: newInitialPose, unitToPx, pxToUnit });
             });
             return;
         }
 
         if (dragging.active) {
             setSections(prev => {
-                const updatedSections = prev.map(s => {
+                const modified = prev.map(s => {
                     if (s.id !== dragging.sectionId) return s;
-
-                    const tempPoints = s.points.map((pt, i) =>
-                        i === dragging.index ? { ...pt, x: p.x, y: p.y, heading: undefined } : pt
+                    // Simply update the dragged point's coordinates
+                    const newPoints = s.points.map((pt, i) =>
+                        i === dragging.index ? { ...pt, x: p.x, y: p.y } : pt
                     );
-
-                    const pointsWithoutHeadings = tempPoints.map(({ heading, ...rest }) => rest);
-                    const startPose = computePoseUpToSection(prev, initialPose, s.id, unitToPx);
-                    const newActions = buildActionsFromPolyline(pointsWithoutHeadings, startPose, pxToUnit);
-
-                    const finalPoints = pointsFromActions(newActions, startPose, unitToPx);
-
-                    return { ...s, points: finalPoints, actions: newActions };
+                    return { ...s, points: newPoints };
                 });
-                return recalcAllFollowingSections({ sections: updatedSections, changedSectionId: dragging.sectionId, initialPose, unitToPx, pxToUnit });
+                return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
             });
             return;
         }
@@ -724,12 +699,12 @@ const CanvasBoard = ({
                     }
                     const centerPoint = projection.center;
                     setSections(prev => {
-                        const updated = prev.map(s => {
+                        const modified = prev.map(s => {
                             if (s.id !== currentSection.id) return s;
                             const newPts = [...s.points, { ...centerPoint, reverse: reverseDrawing, reference: segmentReference, heading: projection.theta }];
-                            return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
+                            return { ...s, points: newPts };
                         });
-                        return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx, pxToUnit });
+                        return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
                     });
                     drawSessionRef.current = {
                         active: true,
@@ -791,12 +766,12 @@ const CanvasBoard = ({
         const projection = projectPointWithReference({ rawPoint: p, anchorPose: basePose, reference: segmentReference, reverse: reverseDrawing, halfRobotLengthPx: unitToPx(robot.wheelOffset ?? robot.length / 2), snap45, baseAngles: SNAP_45_BASE_ANGLES });
         const centerPoint = projection.center;
         setSections(prev => {
-            const updated = prev.map(s => {
+            const modified = prev.map(s => {
                 if (s.id !== currentSection.id) return s;
                 const newPts = [...s.points, { ...centerPoint, reverse: reverseDrawing, reference: segmentReference, heading: projection.theta }];
-                return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
+                return { ...s, points: newPts };
             });
-            return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx, pxToUnit });
+            return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
         });
         drawSessionRef.current = { active: false, lastPoint: null, addedDuringDrag: false };
         drawThrottleRef.current.lastAutoAddTs = Date.now();

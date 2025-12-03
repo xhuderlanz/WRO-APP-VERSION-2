@@ -1,6 +1,13 @@
 import { DEG2RAD, RAD2DEG } from "./constants";
 import { pointsFromActions, computePoseUpToSection, buildActionsFromPolyline, getPoseAfterActions, normalizeAngle } from "./geometry";
 
+/**
+ * LEGACY FILE - DO NOT USE FOR NEW FEATURES
+ * 
+ * This is the old sections recalc logic that modifies point coordinates.
+ * Use sections_stable.js instead, which keeps points immutable.
+ */
+
 export const recalcAllFollowingSections = ({ sections, changedSectionId, initialPose, unitToPx, pxToUnit }) => {
     const changedIndex = sections.findIndex(s => s.id === changedSectionId);
     if (changedIndex === -1) return sections;

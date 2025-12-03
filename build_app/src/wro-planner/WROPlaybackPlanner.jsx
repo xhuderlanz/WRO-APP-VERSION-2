@@ -27,7 +27,8 @@ import {
 } from "./domain/geometry";
 import {
     recalcAfterEditStable as recalcAllFollowingSections,
-    recalcSectionFromPointsStable as recalcSectionFromPoints
+    recalcSectionFromPointsStable as recalcSectionFromPoints,
+    recalcSectionsFromPointsStable
 } from "./domain/sections_stable";
 
 export default function WROPlaybackPlanner() {
@@ -171,24 +172,27 @@ export default function WROPlaybackPlanner() {
 
     const updateSectionActions = useCallback((sectionId, newActions) => {
         setSections(prev => {
-            const newSections = prev.map(s => {
+            // 1. Regenerate points ONLY for this section from the new actions
+            const modified = prev.map(s => {
                 if (s.id !== sectionId) return s;
-                const newPoints = pointsFromActions(newActions, computePoseUpToSection(prev, initialPose, sectionId, unitToPx), unitToPx);
-                return { ...s, actions: newActions, points: newPoints };
+                const startPose = computePoseUpToSection(prev, initialPose, s.id, unitToPx);
+                const newPoints = pointsFromActions(newActions, startPose, unitToPx);
+                return { ...s, points: newPoints, actions: newActions };
             });
-            return recalcAllFollowingSections({ sections: newSections, changedSectionId: sectionId, initialPose, unitToPx, pxToUnit });
+            // 2. Recalculate ALL sections to maintain consistency
+            return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
         });
-    }, [initialPose, unitToPx]);
+    }, [initialPose, unitToPx, pxToUnit]);
 
     const removeLastPointFromCurrentSection = useCallback(() => {
         if (!currentSection || currentSection.points.length === 0) return;
         setSections(prev => {
-            const newSections = prev.map(s => {
+            const modified = prev.map(s => {
                 if (s.id !== currentSection.id) return s;
                 const newPts = s.points.slice(0, -1);
-                return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
+                return { ...s, points: newPts };
             });
-            return recalcAllFollowingSections({ sections: newSections, changedSectionId: currentSection.id, initialPose, unitToPx, pxToUnit });
+            return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
         });
     }, [currentSection, initialPose, pxToUnit, unitToPx]);
 
