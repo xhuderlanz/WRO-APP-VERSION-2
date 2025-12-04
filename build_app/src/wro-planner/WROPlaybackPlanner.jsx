@@ -43,7 +43,7 @@ export default function WROPlaybackPlanner() {
     const [expandedSections, setExpandedSections] = useState([sections[0].id]);
     const [initialPose, setInitialPose] = useState({ x: 120, y: 120, theta: 0 });
     const [drawMode, setDrawMode] = useState(true);
-    const [snapGrid, setSnapGrid] = useState(true);
+    const snapGrid = true; // Always enabled
     const [snap45, setSnap45] = useState(false);
     const [ghost, setGhost] = useState({
         x: 0,
@@ -84,15 +84,15 @@ export default function WROPlaybackPlanner() {
     const unitToPx = useCallback((val) => {
         const ppm = (canvasBaseSize.width) / (MAT_MM.w);
         const ppu = unit === 'mm' ? ppm : ppm * 10;
-        return val * ppu * zoom;
-    }, [canvasBaseSize, unit, zoom]);
+        return val * ppu;
+    }, [canvasBaseSize, unit]);
 
     const pxToUnit = useCallback((px) => {
         const ppm = (canvasBaseSize.width) / (MAT_MM.w);
         const ppu = unit === 'mm' ? ppm : ppm * 10;
         if (!ppu) return 0;
-        return px / (ppu * zoom);
-    }, [canvasBaseSize, unit, zoom]);
+        return px / ppu;
+    }, [canvasBaseSize, unit]);
 
     const {
         isRunning,
@@ -275,8 +275,6 @@ export default function WROPlaybackPlanner() {
                     setDrawMode={setDrawMode}
                     snap45={snap45}
                     setSnap45={setSnap45}
-                    snapGrid={snapGrid}
-                    setSnapGrid={setSnapGrid}
                     isRunning={isRunning}
                     isPaused={isPaused}
                     startMission={startMission}
@@ -338,17 +336,21 @@ export default function WROPlaybackPlanner() {
                             sections={sections}
                             setSections={setSections}
                             selectedSectionId={selectedSectionId}
+                            setSelectedSectionId={setSelectedSectionId}
                             initialPose={initialPose}
                             setInitialPose={setInitialPose}
                             playPose={playPose}
                             isRunning={isRunning}
                             drawMode={drawMode}
+                            setDrawMode={setDrawMode}
                             rulerActive={rulerActive}
                             rulerPoints={rulerPoints}
                             setRulerPoints={setRulerPoints}
                             snapGrid={snapGrid}
                             snap45={snap45}
+                            setSnap45={setSnap45}
                             referenceMode={referenceMode}
+                            setReferenceMode={setReferenceMode}
                             reverseDrawing={reverseDrawing}
                             setReverseDrawing={setReverseDrawing}
                             zoom={zoom}
@@ -379,6 +381,7 @@ export default function WROPlaybackPlanner() {
                             setGrid={setGrid}
                             isSettingOrigin={isSettingOrigin}
                             setIsSettingOrigin={setIsSettingOrigin}
+                            addSection={addSection}
                         />
                         <div className="canvas-legend" aria-hidden="true">
                             <div className="canvas-legend__item">

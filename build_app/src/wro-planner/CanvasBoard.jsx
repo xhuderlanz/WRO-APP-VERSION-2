@@ -14,16 +14,20 @@ const CanvasBoard = ({
     sections,
     setSections,
     selectedSectionId,
+    setSelectedSectionId,
     initialPose,
     playPose,
     isRunning,
     drawMode,
+    setDrawMode,
     rulerActive,
     rulerPoints,
     setRulerPoints,
     snapGrid,
     snap45,
+    setSnap45,
     referenceMode,
+    setReferenceMode,
     reverseDrawing,
     setReverseDrawing,
     zoom,
@@ -53,7 +57,8 @@ const CanvasBoard = ({
     setGrid,
     isSettingOrigin,
     setIsSettingOrigin,
-    setInitialPose
+    setInitialPose,
+    addSection
 }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -66,6 +71,55 @@ const CanvasBoard = ({
 
     // Keyboard handler
     const handleKeyDown = useCallback((e) => {
+        // Tab: Toggle draw/edit mode
+        if (e.key === 'Tab' && !e.repeat) {
+            e.preventDefault();
+            setDrawMode(prev => !prev);
+            return;
+        }
+
+        // Q: Toggle snap 45°
+        if (e.key === 'q' || e.key === 'Q') {
+            e.preventDefault();
+            setSnap45(prev => !prev);
+            return;
+        }
+
+        // A: Add new section
+        if (e.key === 'a' || e.key === 'A') {
+            e.preventDefault();
+            addSection();
+            return;
+        }
+
+        // Arrow Up: Select previous section
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const currentIndex = sections.findIndex(s => s.id === selectedSectionId);
+            if (currentIndex > 0) {
+                setSelectedSectionId(sections[currentIndex - 1].id);
+            }
+            return;
+        }
+
+        // Arrow Down: Select next section
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const currentIndex = sections.findIndex(s => s.id === selectedSectionId);
+            if (currentIndex < sections.length - 1) {
+                setSelectedSectionId(sections[currentIndex + 1].id);
+            }
+            return;
+        }
+
+        // R: Toggle reference mode (center/tip)
+        if (e.key === 'r' || e.key === 'R') {
+            e.preventDefault();
+            setReferenceMode(prev => prev === 'center' ? 'tip' : 'center');
+            return;
+        }
+
+        // Space: Toggle reverse drawing
         if (e.code === 'Space' && !e.repeat) {
             e.preventDefault();
             setReverseDrawing(prev => !prev);
@@ -85,7 +139,7 @@ const CanvasBoard = ({
                 setDragging({ active: false, sectionId: null, index: -1 });
             }
         }
-    }, [dragging, isRunning, sections, initialPose, setReverseDrawing, setSections, setDragging, pxToUnit, unitToPx]);
+    }, [dragging, isRunning, sections, selectedSectionId, initialPose, setDrawMode, setSnap45, addSection, setSelectedSectionId, setReferenceMode, setReverseDrawing, setSections, setDragging, pxToUnit, unitToPx]);
 
     const handleKeyUp = useCallback((e) => {
         if (e.code === 'Space') {
@@ -134,7 +188,7 @@ const CanvasBoard = ({
         return -1;
     }, []);
 
-    const drawRobot = useCallback((ctx, pose, isGhost = false) => {
+    const drawRobot = useCallback((ctx, pose, isGhost = false, showModeIndicator = false) => {
         ctx.save();
         ctx.translate(pose.x, pose.y);
         ctx.rotate(pose.theta);
@@ -147,6 +201,7 @@ const CanvasBoard = ({
             // If we want image to respect offset, we need to know where the "wheels" are in the image.
             // For now, let's keep image centered on the pose.
             ctx.drawImage(robotImgObj, -lPx / 2, -wPx / 2, lPx, wPx);
+            ctx.globalAlpha = 1; // Reset alpha
         } else {
             ctx.globalAlpha = isGhost ? 0.4 : (robot.opacity ?? 1);
             ctx.fillStyle = isGhost ? `${robot.color}66` : robot.color;
@@ -192,8 +247,92 @@ const CanvasBoard = ({
             ctx.stroke();
             ctx.globalAlpha = 1; // Reset alpha
         }
+
+        // Mode indicator overlay
+        if (showModeIndicator && !isGhost) {
+            const overlaySize = 20; // Diameter of the circle
+            const overlayRadius = overlaySize / 2;
+
+            // Position at center of robot (wheel axis at 0,0)
+            const overlayX = 0;
+            const overlayY = 0;
+
+            // Draw circle background
+            ctx.beginPath();
+            ctx.arc(overlayX, overlayY, overlayRadius, 0, Math.PI * 2);
+            ctx.fillStyle = drawMode ? 'rgba(34, 197, 94, 0.9)' : 'rgba(59, 130, 246, 0.9)'; // green-500 : blue-500
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw icon
+            ctx.strokeStyle = '#ffffff';
+            ctx.fillStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            if (drawMode) {
+                // Pencil icon
+                const iconSize = 8;
+                ctx.save();
+                ctx.translate(overlayX, overlayY);
+                ctx.rotate(Math.PI / 4); // 45 degrees
+
+                // Pencil body
+                ctx.beginPath();
+                ctx.moveTo(-iconSize / 2, iconSize / 2);
+                ctx.lineTo(iconSize / 2, -iconSize / 2);
+                ctx.stroke();
+
+                // Pencil tip
+                ctx.beginPath();
+                ctx.moveTo(iconSize / 2, -iconSize / 2);
+                ctx.lineTo(iconSize / 2 + 2, -iconSize / 2 - 2);
+                ctx.stroke();
+
+                ctx.restore();
+            } else {
+                // Move arrows icon (4-way arrows)
+                const arrowSize = 6;
+
+                // Up arrow
+                ctx.beginPath();
+                ctx.moveTo(overlayX, overlayY - arrowSize);
+                ctx.lineTo(overlayX - 2, overlayY - arrowSize + 3);
+                ctx.moveTo(overlayX, overlayY - arrowSize);
+                ctx.lineTo(overlayX + 2, overlayY - arrowSize + 3);
+                ctx.stroke();
+
+                // Down arrow
+                ctx.beginPath();
+                ctx.moveTo(overlayX, overlayY + arrowSize);
+                ctx.lineTo(overlayX - 2, overlayY + arrowSize - 3);
+                ctx.moveTo(overlayX, overlayY + arrowSize);
+                ctx.lineTo(overlayX + 2, overlayY + arrowSize - 3);
+                ctx.stroke();
+
+                // Left arrow
+                ctx.beginPath();
+                ctx.moveTo(overlayX - arrowSize, overlayY);
+                ctx.lineTo(overlayX - arrowSize + 3, overlayY - 2);
+                ctx.moveTo(overlayX - arrowSize, overlayY);
+                ctx.lineTo(overlayX - arrowSize + 3, overlayY + 2);
+                ctx.stroke();
+
+                // Right arrow
+                ctx.beginPath();
+                ctx.moveTo(overlayX + arrowSize, overlayY);
+                ctx.lineTo(overlayX + arrowSize - 3, overlayY - 2);
+                ctx.moveTo(overlayX + arrowSize, overlayY);
+                ctx.lineTo(overlayX + arrowSize - 3, overlayY + 2);
+                ctx.stroke();
+            }
+        }
+
         ctx.restore();
-    }, [robot, robotImgObj, unitToPx]);
+    }, [robot, robotImgObj, unitToPx, drawMode]);
 
     const draw = useCallback(() => {
         const canvas = canvasRef.current;
@@ -372,7 +511,7 @@ const CanvasBoard = ({
 
         // Robot
         if (isRunning) {
-            drawRobot(ctx, playPose);
+            drawRobot(ctx, playPose, false, true);
             // Action overlay
             if (actionCursorRef.current && actionCursorRef.current.list.length > 0) {
                 const ac = actionCursorRef.current;
@@ -388,7 +527,7 @@ const CanvasBoard = ({
             }
         } else {
             // Draw robot at initial pose when not running
-            drawRobot(ctx, initialPose);
+            drawRobot(ctx, initialPose, false, true);
         }
 
         // Ruler
