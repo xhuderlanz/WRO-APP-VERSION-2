@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { IconTarget } from "./icons";
 import { FIELD_PRESETS, DEG2RAD, RAD2DEG } from "./domain/constants";
 
-const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOpacity, setBgOpacity, grid, setGrid, robot, setRobot, initialPose, setInitialPose, handleBgUpload, handleRobotImageUpload, setIsSettingOrigin, unit, setUnit, cursorGuideColor, setCursorGuideColor, cursorGuideLineWidth, setCursorGuideLineWidth }) => {
+const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOpacity, setBgOpacity, grid, setGrid, robot, setRobot, initialPose, setInitialPose, handleBgUpload, handleRobotImageUpload, setIsSettingOrigin, unit, setUnit, cursorGuideColor, setCursorGuideColor, cursorGuideLineWidth, setCursorGuideLineWidth, ghostRobotOpacity, setGhostRobotOpacity }) => {
     const isMM = unit === 'mm';
     const sizeMin = isMM ? 1 : 0.1;
     const sizeMax = isMM ? 50 : 5;
@@ -313,6 +313,21 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                         onChange={e => setRobot(r => ({ ...r, opacity: Number(e.target.value) }))}
                                     />
                                     <span className="option-field__value">{Math.round((robot.opacity ?? 1) * 100)}%</span>
+                                </div>
+                            </div>
+                            <div className="option-field option-field--range">
+                                <div className="option-field__label">Opacidad robot cursor (fantasma)</div>
+                                <span className="option-field__hint">Ajusta la visibilidad del robot fantasma que sigue al cursor. Presiona "O" para alternar temporalmente a 100%.</span>
+                                <div className="option-field__controls">
+                                    <input
+                                        type="range"
+                                        min={0.1}
+                                        max={1}
+                                        step={0.05}
+                                        value={ghostRobotOpacity}
+                                        onChange={e => setGhostRobotOpacity(Number(e.target.value))}
+                                    />
+                                    <span className="option-field__value">{Math.round(ghostRobotOpacity * 100)}%</span>
                                 </div>
                             </div>
                         </div>

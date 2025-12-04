@@ -58,7 +58,10 @@ const CanvasBoard = ({
     isSettingOrigin,
     setIsSettingOrigin,
     setInitialPose,
-    addSection
+    addSection,
+    ghostRobotOpacity,
+    ghostOpacityOverride,
+    setGhostOpacityOverride
 }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -119,6 +122,13 @@ const CanvasBoard = ({
             return;
         }
 
+        // O: Toggle ghost robot opacity (configured vs 100%)
+        if (e.key === 'o' || e.key === 'O') {
+            e.preventDefault();
+            setGhostOpacityOverride(prev => !prev);
+            return;
+        }
+
         // Space: Toggle reverse drawing
         if (e.code === 'Space' && !e.repeat) {
             e.preventDefault();
@@ -139,7 +149,7 @@ const CanvasBoard = ({
                 setDragging({ active: false, sectionId: null, index: -1 });
             }
         }
-    }, [dragging, isRunning, sections, selectedSectionId, initialPose, setDrawMode, setSnap45, addSection, setSelectedSectionId, setReferenceMode, setReverseDrawing, setSections, setDragging, pxToUnit, unitToPx]);
+    }, [dragging, isRunning, sections, selectedSectionId, initialPose, setDrawMode, setSnap45, addSection, setSelectedSectionId, setReferenceMode, setReverseDrawing, setGhostOpacityOverride, setSections, setDragging, pxToUnit, unitToPx]);
 
     const handleKeyUp = useCallback((e) => {
         if (e.code === 'Space') {
@@ -195,15 +205,18 @@ const CanvasBoard = ({
         const wPx = unitToPx(robot.width);
         const lPx = unitToPx(robot.length);
 
+        // Calculate dynamic opacity for ghost
+        const ghostOpacity = ghostOpacityOverride ? 1.0 : ghostRobotOpacity;
+
         if (robotImgObj) {
-            ctx.globalAlpha = isGhost ? 0.4 : (robot.opacity ?? 1);
+            ctx.globalAlpha = isGhost ? ghostOpacity : (robot.opacity ?? 1);
             // TODO: Handle image offset if needed, for now assume image center is robot center
             // If we want image to respect offset, we need to know where the "wheels" are in the image.
             // For now, let's keep image centered on the pose.
             ctx.drawImage(robotImgObj, -lPx / 2, -wPx / 2, lPx, wPx);
             ctx.globalAlpha = 1; // Reset alpha
         } else {
-            ctx.globalAlpha = isGhost ? 0.4 : (robot.opacity ?? 1);
+            ctx.globalAlpha = isGhost ? ghostOpacity : (robot.opacity ?? 1);
             ctx.fillStyle = isGhost ? `${robot.color}66` : robot.color;
 
             const wheelOffsetVal = robot.wheelOffset !== undefined ? robot.wheelOffset : (robot.length / 2);
@@ -248,7 +261,39 @@ const CanvasBoard = ({
             ctx.globalAlpha = 1; // Reset alpha
         }
 
-        // Mode indicator overlay
+        // Directional arrow indicator (only for ghost robot)
+        if (isGhost) {
+            const arrowLength = 30; // Length of the arrow from center
+            const arrowHeadSize = 8;
+
+            ctx.globalAlpha = ghostOpacity; // Match ghost opacity
+            ctx.strokeStyle = reverseDrawing ? '#ef4444' : '#22c55e'; // red-500 : green-500
+            ctx.fillStyle = reverseDrawing ? '#ef4444' : '#22c55e';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+
+            // Arrow direction: forward (positive X) or backward (negative X)
+            const direction = reverseDrawing ? -1 : 1;
+            const endX = arrowLength * direction;
+
+            // Draw arrow line from center
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(endX, 0);
+            ctx.stroke();
+
+            // Draw arrowhead
+            ctx.beginPath();
+            ctx.moveTo(endX, 0);
+            ctx.lineTo(endX - arrowHeadSize * direction, -arrowHeadSize / 2);
+            ctx.lineTo(endX - arrowHeadSize * direction, arrowHeadSize / 2);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.globalAlpha = 1; // Reset alpha
+        }
+
+        // Mode indicator overlay (only for main robot, not ghost)
         if (showModeIndicator && !isGhost) {
             const overlaySize = 20; // Diameter of the circle
             const overlayRadius = overlaySize / 2;
@@ -332,7 +377,7 @@ const CanvasBoard = ({
         }
 
         ctx.restore();
-    }, [robot, robotImgObj, unitToPx, drawMode]);
+    }, [robot, robotImgObj, unitToPx, drawMode, reverseDrawing, ghostRobotOpacity, ghostOpacityOverride]);
 
     const draw = useCallback(() => {
         const canvas = canvasRef.current;
@@ -471,8 +516,13 @@ const CanvasBoard = ({
                 // Calculate pose at the hovered point
                 let poseAtPoint = computePoseUpToSection(sections, initialPose, hoveredSection.id, unitToPx);
 
-                // Apply actions up to and including the hovered point
-                for (let i = 0; i <= hoverNode.index && i < hoveredSection.actions.length; i++) {
+                // Each point generates a rotate + move action pair
+                // To show robot AT point index N, we need to apply all actions that lead TO that point
+                // Point 0 is after action 0 (rotate) + action 1 (move)
+                // Point 1 is after actions 0,1,2,3
+                // So for point index N, apply actions 0 through (2*N + 1)
+                const actionsToApply = (hoverNode.index + 1) * 2;
+                for (let i = 0; i < actionsToApply && i < hoveredSection.actions.length; i++) {
                     const action = hoveredSection.actions[i];
                     if (action.type === 'rotate') {
                         poseAtPoint = {

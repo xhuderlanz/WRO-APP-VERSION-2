@@ -86,7 +86,7 @@ const SectionsPanel = ({ sections, setSections, selectedSectionId, setSelectedSe
                                                     className={`section-card__actions ${isDragging ? 'opacity-60 border-dashed border-indigo-300' : 'border-slate-200/70'}`}
                                                 >
                                                     <span className="cursor-move touch-none p-1 text-slate-400"><IconGripVertical /></span>
-                                                    <span className="text-xs font-medium text-slate-600">{a.type === 'move' ? 'Avanzar' : 'Girar'}</span>
+                                                    <span className="text-xs font-medium text-slate-600">#{i + 1} {a.type === 'move' ? 'Avanzar' : 'Girar'}</span>
                                                     {a.type === 'move' ? (
                                                         <div className="section-card__field">
                                                             <label className="text-xs flex items-center gap-2">Dist ({unit})

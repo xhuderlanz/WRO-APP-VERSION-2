@@ -73,6 +73,8 @@ export default function WROPlaybackPlanner() {
     const [cursorGuideColor, setCursorGuideColor] = useState('#ff0000ff');
     const [cursorGuideLineWidth, setCursorGuideLineWidth] = useState(4);
     const [playbackSpeed, setPlaybackSpeed] = useState(3);
+    const [ghostRobotOpacity, setGhostRobotOpacity] = useState(0.4); // Configurable opacity for ghost robot
+    const [ghostOpacityOverride, setGhostOpacityOverride] = useState(false); // Toggle for 100% opacity
 
     const drawSessionRef = useRef({ active: false, lastPoint: null, addedDuringDrag: false });
     const drawThrottleRef = useRef({ lastAutoAddTs: 0 });
@@ -382,6 +384,9 @@ export default function WROPlaybackPlanner() {
                             isSettingOrigin={isSettingOrigin}
                             setIsSettingOrigin={setIsSettingOrigin}
                             addSection={addSection}
+                            ghostRobotOpacity={ghostRobotOpacity}
+                            ghostOpacityOverride={ghostOpacityOverride}
+                            setGhostOpacityOverride={setGhostOpacityOverride}
                         />
                         <div className="canvas-legend" aria-hidden="true">
                             <div className="canvas-legend__item">
@@ -391,6 +396,21 @@ export default function WROPlaybackPlanner() {
                             <div className="canvas-legend__item">
                                 <span className="canvas-legend__swatch canvas-legend__swatch--tip" />
                                 <span className="text-xs text-slate-600">Punta del robot</span>
+                            </div>
+                            <div className="canvas-legend__item">
+                                <span className={`text-xs font-semibold ${snap45 ? 'text-green-600' : 'text-slate-400'}`}>
+                                    {snap45 ? '✓' : '○'} Snap 45°
+                                </span>
+                            </div>
+                            <div className="canvas-legend__item">
+                                <span className={`text-xs font-semibold ${reverseDrawing ? 'text-red-600' : 'text-slate-400'}`}>
+                                    {reverseDrawing ? '↶' : '↷'} {reverseDrawing ? 'Reversa' : 'Adelante'}
+                                </span>
+                            </div>
+                            <div className="canvas-legend__item">
+                                <span className={`text-xs font-semibold ${referenceMode === 'tip' ? 'text-orange-600' : 'text-blue-600'}`}>
+                                    {referenceMode === 'tip' ? '▶' : '●'} {referenceMode === 'tip' ? 'Punta' : 'Centro'}
+                                </span>
                             </div>
                         </div>
                     </section>
@@ -419,6 +439,8 @@ export default function WROPlaybackPlanner() {
                 setCursorGuideColor={setCursorGuideColor}
                 cursorGuideLineWidth={cursorGuideLineWidth}
                 setCursorGuideLineWidth={setCursorGuideLineWidth}
+                ghostRobotOpacity={ghostRobotOpacity}
+                setGhostRobotOpacity={setGhostRobotOpacity}
             />
 
             <footer className="footer-note">Dimensiones del tapete: 2362mm × 1143mm.</footer>
