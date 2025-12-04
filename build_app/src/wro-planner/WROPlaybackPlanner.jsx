@@ -75,6 +75,7 @@ export default function WROPlaybackPlanner() {
     const [playbackSpeed, setPlaybackSpeed] = useState(3);
     const [ghostRobotOpacity, setGhostRobotOpacity] = useState(0.4); // Configurable opacity for ghost robot
     const [ghostOpacityOverride, setGhostOpacityOverride] = useState(false); // Toggle for 100% opacity
+    const [robotImageRotation, setRobotImageRotation] = useState(0); // Rotation angle for robot image in degrees
 
     const drawSessionRef = useRef({ active: false, lastPoint: null, addedDuringDrag: false });
     const drawThrottleRef = useRef({ lastAutoAddTs: 0 });
@@ -387,6 +388,7 @@ export default function WROPlaybackPlanner() {
                             ghostRobotOpacity={ghostRobotOpacity}
                             ghostOpacityOverride={ghostOpacityOverride}
                             setGhostOpacityOverride={setGhostOpacityOverride}
+                            robotImageRotation={robotImageRotation}
                         />
                         <div className="canvas-legend" aria-hidden="true">
                             <div className="canvas-legend__item">
@@ -441,6 +443,8 @@ export default function WROPlaybackPlanner() {
                 setCursorGuideLineWidth={setCursorGuideLineWidth}
                 ghostRobotOpacity={ghostRobotOpacity}
                 setGhostRobotOpacity={setGhostRobotOpacity}
+                robotImageRotation={robotImageRotation}
+                setRobotImageRotation={setRobotImageRotation}
             />
 
             <footer className="footer-note">Dimensiones del tapete: 2362mm × 1143mm.</footer>

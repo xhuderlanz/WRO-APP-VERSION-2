@@ -61,7 +61,8 @@ const CanvasBoard = ({
     addSection,
     ghostRobotOpacity,
     ghostOpacityOverride,
-    setGhostOpacityOverride
+    setGhostOpacityOverride,
+    robotImageRotation
 }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -213,7 +214,13 @@ const CanvasBoard = ({
             // TODO: Handle image offset if needed, for now assume image center is robot center
             // If we want image to respect offset, we need to know where the "wheels" are in the image.
             // For now, let's keep image centered on the pose.
+
+            // Apply robot image rotation
+            const rotationRad = (robotImageRotation || 0) * DEG2RAD;
+            ctx.rotate(rotationRad);
             ctx.drawImage(robotImgObj, -lPx / 2, -wPx / 2, lPx, wPx);
+            ctx.rotate(-rotationRad); // Reset rotation
+
             ctx.globalAlpha = 1; // Reset alpha
         } else {
             ctx.globalAlpha = isGhost ? ghostOpacity : (robot.opacity ?? 1);
@@ -377,7 +384,7 @@ const CanvasBoard = ({
         }
 
         ctx.restore();
-    }, [robot, robotImgObj, unitToPx, drawMode, reverseDrawing, ghostRobotOpacity, ghostOpacityOverride]);
+    }, [robot, robotImgObj, unitToPx, drawMode, reverseDrawing, ghostRobotOpacity, ghostOpacityOverride, robotImageRotation]);
 
     const draw = useCallback(() => {
         const canvas = canvasRef.current;

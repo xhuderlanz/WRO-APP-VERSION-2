@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { IconTarget } from "./icons";
 import { FIELD_PRESETS, DEG2RAD, RAD2DEG } from "./domain/constants";
 
-const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOpacity, setBgOpacity, grid, setGrid, robot, setRobot, initialPose, setInitialPose, handleBgUpload, handleRobotImageUpload, setIsSettingOrigin, unit, setUnit, cursorGuideColor, setCursorGuideColor, cursorGuideLineWidth, setCursorGuideLineWidth, ghostRobotOpacity, setGhostRobotOpacity }) => {
+const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOpacity, setBgOpacity, grid, setGrid, robot, setRobot, initialPose, setInitialPose, handleBgUpload, handleRobotImageUpload, setIsSettingOrigin, unit, setUnit, cursorGuideColor, setCursorGuideColor, cursorGuideLineWidth, setCursorGuideLineWidth, ghostRobotOpacity, setGhostRobotOpacity, robotImageRotation, setRobotImageRotation }) => {
     const isMM = unit === 'mm';
     const sizeMin = isMM ? 1 : 0.1;
     const sizeMax = isMM ? 50 : 5;
@@ -300,6 +300,30 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                     </span>
                                     <span className="option-field__hint">Utiliza PNG con fondo transparente para mejores resultados.</span>
                                 </label>
+                                <div className="option-field option-field--range">
+                                    <div className="option-field__label">Rotación de imagen del robot</div>
+                                    <span className="option-field__hint">Ajusta la orientación de la imagen del robot personalizada.</span>
+                                    <div className="option-field__controls">
+                                        <input
+                                            type="range"
+                                            min={0}
+                                            max={360}
+                                            step={1}
+                                            value={robotImageRotation || 0}
+                                            onChange={e => setRobotImageRotation(Number(e.target.value))}
+                                        />
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            max={360}
+                                            step={1}
+                                            className="option-number"
+                                            value={robotImageRotation || 0}
+                                            onChange={e => setRobotImageRotation(Number(e.target.value))}
+                                        />
+                                        <span className="option-field__value">°</span>
+                                    </div>
+                                </div>
                             </div>
                             <div className="option-field option-field--range">
                                 <div className="option-field__label">Opacidad del robot</div>
