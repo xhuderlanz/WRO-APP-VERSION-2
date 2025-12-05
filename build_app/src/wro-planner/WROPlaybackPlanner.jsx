@@ -26,9 +26,10 @@ import {
     projectPointWithReference
 } from "./domain/geometry";
 import {
-    recalcAllFollowingSections,
-    recalcSectionFromPoints
-} from "./domain/sections";
+    recalcAfterEditStable as recalcAllFollowingSections,
+    recalcSectionFromPointsStable as recalcSectionFromPoints,
+    recalcSectionsFromPointsStable
+} from "./domain/sections_stable";
 
 export default function WROPlaybackPlanner() {
     const [fieldKey, setFieldKey] = useState(FIELD_PRESETS[0].key);
@@ -42,7 +43,7 @@ export default function WROPlaybackPlanner() {
     const [expandedSections, setExpandedSections] = useState([sections[0].id]);
     const [initialPose, setInitialPose] = useState({ x: 120, y: 120, theta: 0 });
     const [drawMode, setDrawMode] = useState(true);
-    const [snapGrid, setSnapGrid] = useState(true);
+    const snapGrid = true; // Always enabled
     const [snap45, setSnap45] = useState(false);
     const [ghost, setGhost] = useState({
         x: 0,
@@ -69,9 +70,12 @@ export default function WROPlaybackPlanner() {
     const [zoom, setZoom] = useState(1);
     const [canvasBaseSize, setCanvasBaseSize] = useState({ width: 0, height: 0 });
     const [cursorGuide, setCursorGuide] = useState({ x: 0, y: 0, visible: false });
-    const [cursorGuideColor, setCursorGuideColor] = useState('#64748b');
-    const [cursorGuideLineWidth, setCursorGuideLineWidth] = useState(1);
-    const [playbackSpeed, setPlaybackSpeed] = useState(1);
+    const [cursorGuideColor, setCursorGuideColor] = useState('#ff0000ff');
+    const [cursorGuideLineWidth, setCursorGuideLineWidth] = useState(4);
+    const [playbackSpeed, setPlaybackSpeed] = useState(3);
+    const [ghostRobotOpacity, setGhostRobotOpacity] = useState(0.4); // Configurable opacity for ghost robot
+    const [ghostOpacityOverride, setGhostOpacityOverride] = useState(false); // Toggle for 100% opacity
+    const [robotImageRotation, setRobotImageRotation] = useState(0); // Rotation angle for robot image in degrees
 
     const drawSessionRef = useRef({ active: false, lastPoint: null, addedDuringDrag: false });
     const drawThrottleRef = useRef({ lastAutoAddTs: 0 });
@@ -83,15 +87,15 @@ export default function WROPlaybackPlanner() {
     const unitToPx = useCallback((val) => {
         const ppm = (canvasBaseSize.width) / (MAT_MM.w);
         const ppu = unit === 'mm' ? ppm : ppm * 10;
-        return val * ppu * zoom;
-    }, [canvasBaseSize, unit, zoom]);
+        return val * ppu;
+    }, [canvasBaseSize, unit]);
 
     const pxToUnit = useCallback((px) => {
         const ppm = (canvasBaseSize.width) / (MAT_MM.w);
         const ppu = unit === 'mm' ? ppm : ppm * 10;
         if (!ppu) return 0;
-        return px / (ppu * zoom);
-    }, [canvasBaseSize, unit, zoom]);
+        return px / ppu;
+    }, [canvasBaseSize, unit]);
 
     const {
         isRunning,
@@ -171,24 +175,27 @@ export default function WROPlaybackPlanner() {
 
     const updateSectionActions = useCallback((sectionId, newActions) => {
         setSections(prev => {
-            const newSections = prev.map(s => {
+            // 1. Regenerate points ONLY for this section from the new actions
+            const modified = prev.map(s => {
                 if (s.id !== sectionId) return s;
-                const newPoints = pointsFromActions(newActions, computePoseUpToSection(prev, initialPose, sectionId, unitToPx), unitToPx);
-                return { ...s, actions: newActions, points: newPoints };
+                const startPose = computePoseUpToSection(prev, initialPose, s.id, unitToPx);
+                const newPoints = pointsFromActions(newActions, startPose, unitToPx);
+                return { ...s, points: newPoints, actions: newActions };
             });
-            return recalcAllFollowingSections({ sections: newSections, changedSectionId: sectionId, initialPose, unitToPx, pxToUnit });
+            // 2. Recalculate ALL sections to maintain consistency
+            return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
         });
-    }, [initialPose, unitToPx]);
+    }, [initialPose, unitToPx, pxToUnit]);
 
     const removeLastPointFromCurrentSection = useCallback(() => {
         if (!currentSection || currentSection.points.length === 0) return;
         setSections(prev => {
-            const newSections = prev.map(s => {
+            const modified = prev.map(s => {
                 if (s.id !== currentSection.id) return s;
                 const newPts = s.points.slice(0, -1);
-                return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
+                return { ...s, points: newPts };
             });
-            return recalcAllFollowingSections({ sections: newSections, changedSectionId: currentSection.id, initialPose, unitToPx, pxToUnit });
+            return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
         });
     }, [currentSection, initialPose, pxToUnit, unitToPx]);
 
@@ -271,8 +278,6 @@ export default function WROPlaybackPlanner() {
                     setDrawMode={setDrawMode}
                     snap45={snap45}
                     setSnap45={setSnap45}
-                    snapGrid={snapGrid}
-                    setSnapGrid={setSnapGrid}
                     isRunning={isRunning}
                     isPaused={isPaused}
                     startMission={startMission}
@@ -334,17 +339,21 @@ export default function WROPlaybackPlanner() {
                             sections={sections}
                             setSections={setSections}
                             selectedSectionId={selectedSectionId}
+                            setSelectedSectionId={setSelectedSectionId}
                             initialPose={initialPose}
                             setInitialPose={setInitialPose}
                             playPose={playPose}
                             isRunning={isRunning}
                             drawMode={drawMode}
+                            setDrawMode={setDrawMode}
                             rulerActive={rulerActive}
                             rulerPoints={rulerPoints}
                             setRulerPoints={setRulerPoints}
                             snapGrid={snapGrid}
                             snap45={snap45}
+                            setSnap45={setSnap45}
                             referenceMode={referenceMode}
+                            setReferenceMode={setReferenceMode}
                             reverseDrawing={reverseDrawing}
                             setReverseDrawing={setReverseDrawing}
                             zoom={zoom}
@@ -375,6 +384,11 @@ export default function WROPlaybackPlanner() {
                             setGrid={setGrid}
                             isSettingOrigin={isSettingOrigin}
                             setIsSettingOrigin={setIsSettingOrigin}
+                            addSection={addSection}
+                            ghostRobotOpacity={ghostRobotOpacity}
+                            ghostOpacityOverride={ghostOpacityOverride}
+                            setGhostOpacityOverride={setGhostOpacityOverride}
+                            robotImageRotation={robotImageRotation}
                         />
                         <div className="canvas-legend" aria-hidden="true">
                             <div className="canvas-legend__item">
@@ -384,6 +398,21 @@ export default function WROPlaybackPlanner() {
                             <div className="canvas-legend__item">
                                 <span className="canvas-legend__swatch canvas-legend__swatch--tip" />
                                 <span className="text-xs text-slate-600">Punta del robot</span>
+                            </div>
+                            <div className="canvas-legend__item">
+                                <span className={`text-xs font-semibold ${snap45 ? 'text-green-600' : 'text-slate-400'}`}>
+                                    {snap45 ? '✓' : '○'} Snap 45°
+                                </span>
+                            </div>
+                            <div className="canvas-legend__item">
+                                <span className={`text-xs font-semibold ${reverseDrawing ? 'text-red-600' : 'text-slate-400'}`}>
+                                    {reverseDrawing ? '↶' : '↷'} {reverseDrawing ? 'Reversa' : 'Adelante'}
+                                </span>
+                            </div>
+                            <div className="canvas-legend__item">
+                                <span className={`text-xs font-semibold ${referenceMode === 'tip' ? 'text-orange-600' : 'text-blue-600'}`}>
+                                    {referenceMode === 'tip' ? '▶' : '●'} {referenceMode === 'tip' ? 'Punta' : 'Centro'}
+                                </span>
                             </div>
                         </div>
                     </section>
@@ -412,6 +441,10 @@ export default function WROPlaybackPlanner() {
                 setCursorGuideColor={setCursorGuideColor}
                 cursorGuideLineWidth={cursorGuideLineWidth}
                 setCursorGuideLineWidth={setCursorGuideLineWidth}
+                ghostRobotOpacity={ghostRobotOpacity}
+                setGhostRobotOpacity={setGhostRobotOpacity}
+                robotImageRotation={robotImageRotation}
+                setRobotImageRotation={setRobotImageRotation}
             />
 
             <footer className="footer-note">Dimensiones del tapete: 2362mm × 1143mm.</footer>

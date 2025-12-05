@@ -1,5 +1,12 @@
 import { DEG2RAD, RAD2DEG } from "./constants";
-import { pointsFromActions, computePoseUpToSection, buildActionsFromPolyline, getPoseAfterActions } from "./geometry";
+import { pointsFromActions, computePoseUpToSection, buildActionsFromPolyline, getPoseAfterActions, normalizeAngle } from "./geometry";
+
+/**
+ * LEGACY FILE - DO NOT USE FOR NEW FEATURES
+ * 
+ * This is the old sections recalc logic that modifies point coordinates.
+ * Use sections_stable.js instead, which keeps points immutable.
+ */
 
 export const recalcAllFollowingSections = ({ sections, changedSectionId, initialPose, unitToPx, pxToUnit }) => {
     const changedIndex = sections.findIndex(s => s.id === changedSectionId);
@@ -30,28 +37,30 @@ export const recalcAllFollowingSections = ({ sections, changedSectionId, initial
         sectionsCopy[i].startAngle = startPose.theta * RAD2DEG;
 
         if (i > changedIndex) {
-            // Instead of regenerating points from actions (which rotates the section if start angle changes),
-            // we want to preserve the absolute orientation of the section (points) and just translate it.
+            // For sections after the changed section, we need to translate the points
+            // to preserve their absolute orientation while connecting to the new start position
 
-            // 1. Get the OLD start pose of this section (from the original sections array)
+            // Get the old start position of this section from ORIGINAL sections array
+            // This ensures we always calculate the translation based on where the section
+            // started BEFORE any updates, not where it is now
             const oldStartPose = computePoseUpToSection(sections, initialPose, sections[i].id, unitToPx);
 
-            // 2. Calculate the translation delta
+            // Calculate translation delta
             const dx = startPose.x - oldStartPose.x;
             const dy = startPose.y - oldStartPose.y;
 
-            // 3. Translate all points
-            const newPoints = sectionsCopy[i].points.map(p => ({
+            // Translate all points to new position (preserving absolute orientation)
+            const translatedPoints = sectionsCopy[i].points.map(p => ({
                 ...p,
                 x: p.x + dx,
                 y: p.y + dy
             }));
 
-            sectionsCopy[i] = { ...sectionsCopy[i], points: newPoints };
+            // Recalculate actions from the translated points
+            // This will automatically insert the needed rotation at the beginning to connect
+            const newActions = buildActionsFromPolyline(translatedPoints, startPose, pxToUnit);
 
-            // 4. Recalculate actions based on the new start pose and translated points
-            // This will automatically adjust the first action (turn/move) to connect correctly
-            const newActions = buildActionsFromPolyline(newPoints, startPose, pxToUnit);
+            sectionsCopy[i].points = translatedPoints;
             sectionsCopy[i].actions = newActions;
         }
 

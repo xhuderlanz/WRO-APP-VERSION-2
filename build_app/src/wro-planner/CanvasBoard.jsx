@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
 import { DEG2RAD, RAD2DEG, SNAP_45_BASE_ANGLES } from "./domain/constants";
 import { normalizeAngle, getReferencePoint, getLastPoseOfSection, projectPointWithReference, pointsFromActions, buildActionsFromPolyline, computePoseUpToSection } from "./domain/geometry";
-import { recalcSectionFromPoints, recalcAllFollowingSections } from "./domain/sections";
+import { recalcAfterEditStable as recalcAllFollowingSections, recalcSectionFromPointsStable as recalcSectionFromPoints, recalcSectionsFromPointsStable } from "./domain/sections_stable";
 
 const CanvasBoard = ({
     fieldKey,
@@ -14,16 +14,20 @@ const CanvasBoard = ({
     sections,
     setSections,
     selectedSectionId,
+    setSelectedSectionId,
     initialPose,
     playPose,
     isRunning,
     drawMode,
+    setDrawMode,
     rulerActive,
     rulerPoints,
     setRulerPoints,
     snapGrid,
     snap45,
+    setSnap45,
     referenceMode,
+    setReferenceMode,
     reverseDrawing,
     setReverseDrawing,
     zoom,
@@ -53,7 +57,12 @@ const CanvasBoard = ({
     setGrid,
     isSettingOrigin,
     setIsSettingOrigin,
-    setInitialPose
+    setInitialPose,
+    addSection,
+    ghostRobotOpacity,
+    ghostOpacityOverride,
+    setGhostOpacityOverride,
+    robotImageRotation
 }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -66,6 +75,62 @@ const CanvasBoard = ({
 
     // Keyboard handler
     const handleKeyDown = useCallback((e) => {
+        // Tab: Toggle draw/edit mode
+        if (e.key === 'Tab' && !e.repeat) {
+            e.preventDefault();
+            setDrawMode(prev => !prev);
+            return;
+        }
+
+        // Q: Toggle snap 45°
+        if (e.key === 'q' || e.key === 'Q') {
+            e.preventDefault();
+            setSnap45(prev => !prev);
+            return;
+        }
+
+        // A: Add new section
+        if (e.key === 'a' || e.key === 'A') {
+            e.preventDefault();
+            addSection();
+            return;
+        }
+
+        // Arrow Up: Select previous section
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const currentIndex = sections.findIndex(s => s.id === selectedSectionId);
+            if (currentIndex > 0) {
+                setSelectedSectionId(sections[currentIndex - 1].id);
+            }
+            return;
+        }
+
+        // Arrow Down: Select next section
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const currentIndex = sections.findIndex(s => s.id === selectedSectionId);
+            if (currentIndex < sections.length - 1) {
+                setSelectedSectionId(sections[currentIndex + 1].id);
+            }
+            return;
+        }
+
+        // R: Toggle reference mode (center/tip)
+        if (e.key === 'r' || e.key === 'R') {
+            e.preventDefault();
+            setReferenceMode(prev => prev === 'center' ? 'tip' : 'center');
+            return;
+        }
+
+        // O: Toggle ghost robot opacity (configured vs 100%)
+        if (e.key === 'o' || e.key === 'O') {
+            e.preventDefault();
+            setGhostOpacityOverride(prev => !prev);
+            return;
+        }
+
+        // Space: Toggle reverse drawing
         if (e.code === 'Space' && !e.repeat) {
             e.preventDefault();
             setReverseDrawing(prev => !prev);
@@ -75,26 +140,17 @@ const CanvasBoard = ({
             // Check if a point is selected (dragging.sectionId is set)
             if (dragging.sectionId && dragging.index > -1) {
                 setSections(prev => {
-                    const updated = prev.map(s => {
+                    const modified = prev.map(s => {
                         if (s.id !== dragging.sectionId) return s;
-                        // Filter out the deleted point and reset heading for the next point
-                        const newPts = s.points
-                            .filter((_, i) => i !== dragging.index)
-                            .map((pt, i) => {
-                                // The point that falls into the deleted index (was i+1, now i) needs recalc
-                                if (i === dragging.index) {
-                                    return { ...pt, heading: undefined };
-                                }
-                                return pt;
-                            });
-                        return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
+                        const newPts = s.points.filter((_, i) => i !== dragging.index);
+                        return { ...s, points: newPts };
                     });
-                    return recalcAllFollowingSections({ sections: updated, changedSectionId: dragging.sectionId, initialPose, unitToPx, pxToUnit });
+                    return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
                 });
                 setDragging({ active: false, sectionId: null, index: -1 });
             }
         }
-    }, [dragging, isRunning, sections, initialPose, setReverseDrawing, setSections, setDragging, pxToUnit, unitToPx]);
+    }, [dragging, isRunning, sections, selectedSectionId, initialPose, setDrawMode, setSnap45, addSection, setSelectedSectionId, setReferenceMode, setReverseDrawing, setGhostOpacityOverride, setSections, setDragging, pxToUnit, unitToPx]);
 
     const handleKeyUp = useCallback((e) => {
         if (e.code === 'Space') {
@@ -143,21 +199,31 @@ const CanvasBoard = ({
         return -1;
     }, []);
 
-    const drawRobot = useCallback((ctx, pose, isGhost = false) => {
+    const drawRobot = useCallback((ctx, pose, isGhost = false, showModeIndicator = false) => {
         ctx.save();
         ctx.translate(pose.x, pose.y);
         ctx.rotate(pose.theta);
         const wPx = unitToPx(robot.width);
         const lPx = unitToPx(robot.length);
 
+        // Calculate dynamic opacity for ghost
+        const ghostOpacity = ghostOpacityOverride ? 1.0 : ghostRobotOpacity;
+
         if (robotImgObj) {
-            ctx.globalAlpha = isGhost ? 0.4 : (robot.opacity ?? 1);
+            ctx.globalAlpha = isGhost ? ghostOpacity : (robot.opacity ?? 1);
             // TODO: Handle image offset if needed, for now assume image center is robot center
             // If we want image to respect offset, we need to know where the "wheels" are in the image.
             // For now, let's keep image centered on the pose.
+
+            // Apply robot image rotation
+            const rotationRad = (robotImageRotation || 0) * DEG2RAD;
+            ctx.rotate(rotationRad);
             ctx.drawImage(robotImgObj, -lPx / 2, -wPx / 2, lPx, wPx);
+            ctx.rotate(-rotationRad); // Reset rotation
+
+            ctx.globalAlpha = 1; // Reset alpha
         } else {
-            ctx.globalAlpha = isGhost ? 0.4 : (robot.opacity ?? 1);
+            ctx.globalAlpha = isGhost ? ghostOpacity : (robot.opacity ?? 1);
             ctx.fillStyle = isGhost ? `${robot.color}66` : robot.color;
 
             const wheelOffsetVal = robot.wheelOffset !== undefined ? robot.wheelOffset : (robot.length / 2);
@@ -201,8 +267,124 @@ const CanvasBoard = ({
             ctx.stroke();
             ctx.globalAlpha = 1; // Reset alpha
         }
+
+        // Directional arrow indicator (only for ghost robot)
+        if (isGhost) {
+            const arrowLength = 30; // Length of the arrow from center
+            const arrowHeadSize = 8;
+
+            ctx.globalAlpha = ghostOpacity; // Match ghost opacity
+            ctx.strokeStyle = reverseDrawing ? '#ef4444' : '#22c55e'; // red-500 : green-500
+            ctx.fillStyle = reverseDrawing ? '#ef4444' : '#22c55e';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+
+            // Arrow direction: forward (positive X) or backward (negative X)
+            const direction = reverseDrawing ? -1 : 1;
+            const endX = arrowLength * direction;
+
+            // Draw arrow line from center
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(endX, 0);
+            ctx.stroke();
+
+            // Draw arrowhead
+            ctx.beginPath();
+            ctx.moveTo(endX, 0);
+            ctx.lineTo(endX - arrowHeadSize * direction, -arrowHeadSize / 2);
+            ctx.lineTo(endX - arrowHeadSize * direction, arrowHeadSize / 2);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.globalAlpha = 1; // Reset alpha
+        }
+
+        // Mode indicator overlay (only for main robot, not ghost)
+        if (showModeIndicator && !isGhost) {
+            const overlaySize = 20; // Diameter of the circle
+            const overlayRadius = overlaySize / 2;
+
+            // Position at center of robot (wheel axis at 0,0)
+            const overlayX = 0;
+            const overlayY = 0;
+
+            // Draw circle background
+            ctx.beginPath();
+            ctx.arc(overlayX, overlayY, overlayRadius, 0, Math.PI * 2);
+            ctx.fillStyle = drawMode ? 'rgba(34, 197, 94, 0.9)' : 'rgba(59, 130, 246, 0.9)'; // green-500 : blue-500
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw icon
+            ctx.strokeStyle = '#ffffff';
+            ctx.fillStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            if (drawMode) {
+                // Pencil icon
+                const iconSize = 8;
+                ctx.save();
+                ctx.translate(overlayX, overlayY);
+                ctx.rotate(Math.PI / 4); // 45 degrees
+
+                // Pencil body
+                ctx.beginPath();
+                ctx.moveTo(-iconSize / 2, iconSize / 2);
+                ctx.lineTo(iconSize / 2, -iconSize / 2);
+                ctx.stroke();
+
+                // Pencil tip
+                ctx.beginPath();
+                ctx.moveTo(iconSize / 2, -iconSize / 2);
+                ctx.lineTo(iconSize / 2 + 2, -iconSize / 2 - 2);
+                ctx.stroke();
+
+                ctx.restore();
+            } else {
+                // Move arrows icon (4-way arrows)
+                const arrowSize = 6;
+
+                // Up arrow
+                ctx.beginPath();
+                ctx.moveTo(overlayX, overlayY - arrowSize);
+                ctx.lineTo(overlayX - 2, overlayY - arrowSize + 3);
+                ctx.moveTo(overlayX, overlayY - arrowSize);
+                ctx.lineTo(overlayX + 2, overlayY - arrowSize + 3);
+                ctx.stroke();
+
+                // Down arrow
+                ctx.beginPath();
+                ctx.moveTo(overlayX, overlayY + arrowSize);
+                ctx.lineTo(overlayX - 2, overlayY + arrowSize - 3);
+                ctx.moveTo(overlayX, overlayY + arrowSize);
+                ctx.lineTo(overlayX + 2, overlayY + arrowSize - 3);
+                ctx.stroke();
+
+                // Left arrow
+                ctx.beginPath();
+                ctx.moveTo(overlayX - arrowSize, overlayY);
+                ctx.lineTo(overlayX - arrowSize + 3, overlayY - 2);
+                ctx.moveTo(overlayX - arrowSize, overlayY);
+                ctx.lineTo(overlayX - arrowSize + 3, overlayY + 2);
+                ctx.stroke();
+
+                // Right arrow
+                ctx.beginPath();
+                ctx.moveTo(overlayX + arrowSize, overlayY);
+                ctx.lineTo(overlayX + arrowSize - 3, overlayY - 2);
+                ctx.moveTo(overlayX + arrowSize, overlayY);
+                ctx.lineTo(overlayX + arrowSize - 3, overlayY + 2);
+                ctx.stroke();
+            }
+        }
+
         ctx.restore();
-    }, [robot, robotImgObj, unitToPx]);
+    }, [robot, robotImgObj, unitToPx, drawMode, reverseDrawing, ghostRobotOpacity, ghostOpacityOverride, robotImageRotation]);
 
     const draw = useCallback(() => {
         const canvas = canvasRef.current;
@@ -226,8 +408,8 @@ const CanvasBoard = ({
         if (sizePx > 3) {
             ctx.beginPath();
             // Parse hex color to rgb to apply alpha
-            const hex = grid.color || '#000000';
-            const r = parseInt(hex.slice(1, 3), 16);
+            const hex = grid.color || '#ffffffff';
+            const r = parseInt(hex.slice(1, 40), 16);
             const g = parseInt(hex.slice(3, 5), 16);
             const b = parseInt(hex.slice(5, 7), 16);
             ctx.strokeStyle = `rgba(${r},${g},${b},${grid.lineAlpha})`;
@@ -341,8 +523,13 @@ const CanvasBoard = ({
                 // Calculate pose at the hovered point
                 let poseAtPoint = computePoseUpToSection(sections, initialPose, hoveredSection.id, unitToPx);
 
-                // Apply actions up to and including the hovered point
-                for (let i = 0; i <= hoverNode.index && i < hoveredSection.actions.length; i++) {
+                // Each point generates a rotate + move action pair
+                // To show robot AT point index N, we need to apply all actions that lead TO that point
+                // Point 0 is after action 0 (rotate) + action 1 (move)
+                // Point 1 is after actions 0,1,2,3
+                // So for point index N, apply actions 0 through (2*N + 1)
+                const actionsToApply = (hoverNode.index + 1) * 2;
+                for (let i = 0; i < actionsToApply && i < hoveredSection.actions.length; i++) {
                     const action = hoveredSection.actions[i];
                     if (action.type === 'rotate') {
                         poseAtPoint = {
@@ -381,7 +568,7 @@ const CanvasBoard = ({
 
         // Robot
         if (isRunning) {
-            drawRobot(ctx, playPose);
+            drawRobot(ctx, playPose, false, true);
             // Action overlay
             if (actionCursorRef.current && actionCursorRef.current.list.length > 0) {
                 const ac = actionCursorRef.current;
@@ -397,7 +584,7 @@ const CanvasBoard = ({
             }
         } else {
             // Draw robot at initial pose when not running
-            drawRobot(ctx, initialPose);
+            drawRobot(ctx, initialPose, false, true);
         }
 
         // Ruler
@@ -586,13 +773,13 @@ const CanvasBoard = ({
                     };
 
                     setSections(prev => {
-                        const updated = prev.map(s => {
+                        const modified = prev.map(s => {
                             if (s.id !== currentSection.id) return s;
                             const newPts = [...s.points];
                             newPts.splice(index + 1, 0, newPoint);
-                            return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
+                            return { ...s, points: newPts };
                         });
-                        return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx, pxToUnit });
+                        return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
                     });
 
                     // Select the newly created point
@@ -635,44 +822,28 @@ const CanvasBoard = ({
             setSections(prev => {
                 if (prev.length === 0 || prev[0].points.length === 0) return prev;
 
-                const firstSection = prev[0];
-                const pointsWithoutHeadings = firstSection.points.map(({ heading, ...rest }) => rest);
+                const modified = prev.map((s, idx) => {
+                    if (idx !== 0) return s;
+                    // Keep same points, just update them in recalc
+                    return { ...s };
+                });
 
-                const newActions = buildActionsFromPolyline(
-                    pointsWithoutHeadings,
-                    newInitialPose,
-                    pxToUnit
-                );
-
-                const newPoints = pointsFromActions(newActions, newInitialPose, unitToPx);
-
-                const newSections = prev.map((s, idx) =>
-                    idx === 0 ? { ...s, points: newPoints, actions: newActions } : s
-                );
-
-                return recalcAllFollowingSections({ sections: newSections, changedSectionId: prev[0].id, initialPose: newInitialPose, unitToPx, pxToUnit });
+                return recalcSectionsFromPointsStable({ sections: modified, initialPose: newInitialPose, unitToPx, pxToUnit });
             });
             return;
         }
 
         if (dragging.active) {
             setSections(prev => {
-                const updatedSections = prev.map(s => {
+                const modified = prev.map(s => {
                     if (s.id !== dragging.sectionId) return s;
-
-                    const tempPoints = s.points.map((pt, i) =>
-                        i === dragging.index ? { ...pt, x: p.x, y: p.y, heading: undefined } : pt
+                    // Simply update the dragged point's coordinates
+                    const newPoints = s.points.map((pt, i) =>
+                        i === dragging.index ? { ...pt, x: p.x, y: p.y } : pt
                     );
-
-                    const pointsWithoutHeadings = tempPoints.map(({ heading, ...rest }) => rest);
-                    const startPose = computePoseUpToSection(prev, initialPose, s.id, unitToPx);
-                    const newActions = buildActionsFromPolyline(pointsWithoutHeadings, startPose, pxToUnit);
-
-                    const finalPoints = pointsFromActions(newActions, startPose, unitToPx);
-
-                    return { ...s, points: finalPoints, actions: newActions };
+                    return { ...s, points: newPoints };
                 });
-                return recalcAllFollowingSections({ sections: updatedSections, changedSectionId: dragging.sectionId, initialPose, unitToPx, pxToUnit });
+                return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
             });
             return;
         }
@@ -724,12 +895,12 @@ const CanvasBoard = ({
                     }
                     const centerPoint = projection.center;
                     setSections(prev => {
-                        const updated = prev.map(s => {
+                        const modified = prev.map(s => {
                             if (s.id !== currentSection.id) return s;
                             const newPts = [...s.points, { ...centerPoint, reverse: reverseDrawing, reference: segmentReference, heading: projection.theta }];
-                            return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
+                            return { ...s, points: newPts };
                         });
-                        return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx, pxToUnit });
+                        return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
                     });
                     drawSessionRef.current = {
                         active: true,
@@ -791,12 +962,12 @@ const CanvasBoard = ({
         const projection = projectPointWithReference({ rawPoint: p, anchorPose: basePose, reference: segmentReference, reverse: reverseDrawing, halfRobotLengthPx: unitToPx(robot.wheelOffset ?? robot.length / 2), snap45, baseAngles: SNAP_45_BASE_ANGLES });
         const centerPoint = projection.center;
         setSections(prev => {
-            const updated = prev.map(s => {
+            const modified = prev.map(s => {
                 if (s.id !== currentSection.id) return s;
                 const newPts = [...s.points, { ...centerPoint, reverse: reverseDrawing, reference: segmentReference, heading: projection.theta }];
-                return recalcSectionFromPoints({ section: { ...s, points: newPts }, sections: prev, initialPose, pxToUnit, unitToPx });
+                return { ...s, points: newPts };
             });
-            return recalcAllFollowingSections({ sections: updated, changedSectionId: currentSection.id, initialPose, unitToPx, pxToUnit });
+            return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
         });
         drawSessionRef.current = { active: false, lastPoint: null, addedDuringDrag: false };
         drawThrottleRef.current.lastAutoAddTs = Date.now();

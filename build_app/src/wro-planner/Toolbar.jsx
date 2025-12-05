@@ -6,8 +6,6 @@ const Toolbar = ({
     setDrawMode,
     snap45,
     setSnap45,
-    snapGrid,
-    setSnapGrid,
     isRunning,
     isPaused,
     startMission,
@@ -136,11 +134,6 @@ const Toolbar = ({
         closeQuickMenu();
     }, [runForward, closeQuickMenu]);
 
-    const handleSnapGridToggle = () => {
-        const isTurningOn = !snapGrid;
-        setSnapGrid(isTurningOn);
-    };
-
     const handleSnap45Toggle = useCallback(() => {
         setSnap45(prev => !prev);
     }, [setSnap45]);
@@ -193,7 +186,6 @@ const Toolbar = ({
             >
                 Snap 45°
             </button>
-            <button onClick={handleSnapGridToggle} className={`toolbar-btn ${snapGrid ? 'toolbar-btn--indigo' : 'toolbar-btn--muted'}`}>Snap Grid</button>
             <div className="toolbar-divider" />
             <div className="toolbar-group toolbar-group--playback border border-slate-200 rounded-lg p-1 bg-slate-50/50">
                 <span className="toolbar-group__label block text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1 px-1">Reproducción</span>
