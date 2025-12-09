@@ -62,11 +62,16 @@ const CanvasBoard = ({
     ghostRobotOpacity,
     ghostOpacityOverride,
     setGhostOpacityOverride,
-    robotImageRotation
+    robotImageRotation,
+    setZoom,
+    pan,
+    setPan,
 }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const [isDraggingRuler, setIsDraggingRuler] = useState(false);
+    const isPanningRef = useRef(false);
+    const lastPanPointRef = useRef({ x: 0, y: 0 });
 
     const DRAW_STEP_MIN_PX = 6;
     const DRAW_AUTO_INTERVAL_MS = 340;
@@ -638,7 +643,23 @@ const CanvasBoard = ({
         if (!width || !height) return;
         cvs.style.width = `${width * zoom}px`;
         cvs.style.height = `${height * zoom}px`;
-    }, [canvasBaseSize, zoom]);
+        cvs.style.transform = `translate(${pan.x}px, ${pan.y}px)`;
+    }, [canvasBaseSize, zoom, pan]);
+
+    const handleWheel = useCallback((e) => {
+        e.preventDefault();
+        // Zoom functionality
+        const delta = -Math.sign(e.deltaY) * 0.1;
+        setZoom(prev => Math.min(Math.max(0.1, prev + delta), 5));
+    }, [setZoom]);
+
+    useEffect(() => {
+        const cvs = canvasRef.current;
+        if (cvs) {
+            cvs.addEventListener('wheel', handleWheel, { passive: false });
+            return () => cvs.removeEventListener('wheel', handleWheel);
+        }
+    }, [handleWheel]);
 
     useEffect(() => {
         draw();
@@ -698,6 +719,15 @@ const CanvasBoard = ({
 
     const onCanvasDown = (e) => {
         if (isSettingOrigin) return;
+
+        // Middle mouse button (Panning)
+        if (e.button === 1) {
+            e.preventDefault();
+            isPanningRef.current = true;
+            lastPanPointRef.current = { x: e.clientX, y: e.clientY };
+            return;
+        }
+
         if (e.button === 2) {
             e.preventDefault();
             if (!drawMode || !currentSection) return;
@@ -794,6 +824,14 @@ const CanvasBoard = ({
     };
 
     const onCanvasMove = (e) => {
+        if (isPanningRef.current) {
+            const dx = e.clientX - lastPanPointRef.current.x;
+            const dy = e.clientY - lastPanPointRef.current.y;
+            setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+            lastPanPointRef.current = { x: e.clientX, y: e.clientY };
+            return;
+        }
+
         const rawPoint = canvasPos(e, false);
         setCursorGuide({
             x: rawPoint.x,
@@ -914,6 +952,9 @@ const CanvasBoard = ({
     };
 
     const onCanvasUp = () => {
+        if (isPanningRef.current) {
+            isPanningRef.current = false;
+        }
         rightPressActiveRef.current = false;
         if (rightEraseTimerRef.current) {
             clearInterval(rightEraseTimerRef.current);
