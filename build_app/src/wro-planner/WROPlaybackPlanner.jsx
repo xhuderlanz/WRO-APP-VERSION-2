@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import Toolbar from "./Toolbar";
+import TopBar from "./TopBar";
 import SectionsPanel from "./SectionsPanel";
 import OptionsPanel from "./OptionsPanel";
 import CanvasBoard from "./CanvasBoard";
@@ -131,21 +131,31 @@ export default function WROPlaybackPlanner() {
         }
     }, [robot.imageSrc]);
 
+    const containerRef = useRef(null);
+
     useEffect(() => {
         const updateSize = () => {
-            const container = document.querySelector('.canvas-card');
+            const container = containerRef.current;
             if (container) {
                 const rect = container.getBoundingClientRect();
                 const aspect = MAT_MM.w / MAT_MM.h;
+                // Subtract padding if necessary, but rect.width includes padding if box-sizing is border-box.
+                // We want the canvas to fill the available space. 
+                // Let's rely on the container width.
                 const w = Math.max(200, Math.floor(rect.width));
                 const h = Math.floor(w / aspect);
                 setCanvasBaseSize({ width: w, height: h });
             }
         };
-        window.addEventListener('resize', updateSize);
-        // Delay slightly to ensure DOM is ready
-        setTimeout(updateSize, 0);
-        return () => window.removeEventListener('resize', updateSize);
+        const resizeObserver = new ResizeObserver(() => updateSize());
+        if (containerRef.current) {
+            resizeObserver.observe(containerRef.current);
+        }
+
+        // Initial sizing
+        updateSize();
+
+        return () => resizeObserver.disconnect();
     }, []);
 
     const handleBgUpload = (e) => {
@@ -271,63 +281,70 @@ export default function WROPlaybackPlanner() {
     }, []);
 
     return (
-        <div className="w-full h-full min-h-screen">
-            <main className="app-shell">
-                <Toolbar
-                    drawMode={drawMode}
-                    setDrawMode={setDrawMode}
-                    snap45={snap45}
-                    setSnap45={setSnap45}
-                    isRunning={isRunning}
-                    isPaused={isPaused}
-                    startMission={startMission}
-                    startMissionReverse={startMissionReverse}
-                    startSection={startSection}
-                    startSectionReverse={startSectionReverse}
-                    pauseResume={pauseResume}
-                    stopPlayback={stopPlayback}
-                    setShowOptions={setShowOptions}
-                    rulerActive={rulerActive}
-                    handleRulerToggle={handleRulerToggle}
-                    reverseDrawing={reverseDrawing}
-                    onToggleReverse={() => setReverseDrawing(p => !p)}
-                    referenceMode={referenceMode}
-                    onReferenceModeChange={setReferenceMode}
-                    zoom={zoom}
-                    onZoomIn={handleZoomIn}
-                    onZoomOut={handleZoomOut}
-                    onZoomReset={handleZoomReset}
-                    playbackSpeed={playbackSpeed}
-                    setPlaybackSpeed={setPlaybackSpeed}
-                />
+        <div className="h-screen w-full bg-slate-100 flex flex-col overflow-hidden text-slate-800 font-sans selection:bg-indigo-100">
+            {/* Header Area */}
+            <header className="shrink-0 px-6 pt-4 pb-2">
+                <div className="max-w-[1920px] mx-auto">
+                    <TopBar
+                        drawMode={drawMode}
+                        setDrawMode={setDrawMode}
+                        snap45={snap45}
+                        setSnap45={setSnap45}
+                        isRunning={isRunning}
+                        isPaused={isPaused}
+                        startMission={startMission}
+                        startMissionReverse={startMissionReverse}
+                        startSection={startSection}
+                        startSectionReverse={startSectionReverse}
+                        pauseResume={pauseResume}
+                        stopPlayback={stopPlayback}
+                        setShowOptions={setShowOptions}
+                        rulerActive={rulerActive}
+                        handleRulerToggle={handleRulerToggle}
+                        reverseDrawing={reverseDrawing}
+                        onToggleReverse={() => setReverseDrawing(p => !p)}
+                        referenceMode={referenceMode}
+                        onReferenceModeChange={setReferenceMode}
+                        zoom={zoom}
+                        onZoomIn={handleZoomIn}
+                        onZoomOut={handleZoomOut}
+                        onZoomReset={handleZoomReset}
+                        playbackSpeed={playbackSpeed}
+                        setPlaybackSpeed={setPlaybackSpeed}
+                    />
+                </div>
+            </header>
 
-                <div className="main-grid">
-                    {/* PANEL IZQUIERDO (card) */}
-                    <aside className="left-panel">
-                        <div className="sections-list">
-                            <SectionsPanel
-                                sections={sections}
-                                setSections={setSections}
-                                selectedSectionId={selectedSectionId}
-                                setSelectedSectionId={setSelectedSectionId}
-                                addSection={addSection}
-                                exportMission={exportMission}
-                                importMission={importMission}
-                                updateSectionActions={updateSectionActions}
-                                computePoseUpToSection={(sectionId) => computePoseUpToSection(sections, initialPose, sectionId, unitToPx)}
-                                pxToUnit={pxToUnit}
-                                isCollapsed={isSectionsPanelCollapsed}
-                                setIsCollapsed={setIsSectionsPanelCollapsed}
-                                expandedSections={expandedSections}
-                                toggleSectionExpansion={toggleSectionExpansion}
-                                toggleSectionVisibility={toggleSectionVisibility}
-                                unit={unit}
-                            />
-                        </div>
-                    </aside>
+            {/* Main Content Area */}
+            <div className="flex-1 flex overflow-hidden px-6 pb-6 gap-6 max-w-[1920px] mx-auto w-full">
 
-                    {/* AREA DEL CANVAS (card limpia) */}
-                    <section className="canvas-card" aria-label="Canvas">
+                {/* Left Panel - SECTIONS */}
+                <aside className="w-[400px] shrink-0 flex flex-col bg-white/80 backdrop-blur-sm rounded-3xl border border-white shadow-xl shadow-slate-200/50 overflow-hidden">
+                    <div className="h-full overflow-hidden flex flex-col">
+                        <SectionsPanel
+                            sections={sections}
+                            setSections={setSections}
+                            selectedSectionId={selectedSectionId}
+                            setSelectedSectionId={setSelectedSectionId}
+                            addSection={addSection}
+                            exportMission={exportMission}
+                            importMission={importMission}
+                            updateSectionActions={updateSectionActions}
+                            computePoseUpToSection={(sectionId) => computePoseUpToSection(sections, initialPose, sectionId, unitToPx)}
+                            pxToUnit={pxToUnit}
+                            isCollapsed={isSectionsPanelCollapsed}
+                            setIsCollapsed={setIsSectionsPanelCollapsed}
+                            expandedSections={expandedSections}
+                            toggleSectionExpansion={toggleSectionExpansion}
+                            toggleSectionVisibility={toggleSectionVisibility}
+                            unit={unit}
+                        />
+                    </div>
+                </aside>
+
+                {/* Right Panel - CANVAS */}
+                <main ref={containerRef} className="flex-1 bg-white rounded-3xl border border-slate-200 shadow-2xl relative overflow-hidden flex flex-col items-center justify-center bg-slate-50/50">
+                    <div className="absolute inset-0 z-0 flex items-center justify-center">
                         <CanvasBoard
                             fieldKey={fieldKey}
                             bgImage={bgImage}
@@ -390,34 +407,25 @@ export default function WROPlaybackPlanner() {
                             setGhostOpacityOverride={setGhostOpacityOverride}
                             robotImageRotation={robotImageRotation}
                         />
-                        <div className="canvas-legend" aria-hidden="true">
-                            <div className="canvas-legend__item">
-                                <span className="canvas-legend__swatch canvas-legend__swatch--center" />
-                                <span className="text-xs text-slate-600">Centro de ruedas</span>
+                    </div>
+
+                    {/* Floating Legend / Footer info inside canvas area */}
+                    <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2 pointer-events-none">
+                        <div className="flex items-center gap-2 bg-white/90 backdrop-blur py-1.5 px-3 rounded-full border border-slate-200 shadow-lg text-xs font-semibold text-slate-500 pointer-events-auto">
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-indigo-500"></span> <span>Centro</span>
                             </div>
-                            <div className="canvas-legend__item">
-                                <span className="canvas-legend__swatch canvas-legend__swatch--tip" />
-                                <span className="text-xs text-slate-600">Punta del robot</span>
-                            </div>
-                            <div className="canvas-legend__item">
-                                <span className={`text-xs font-semibold ${snap45 ? 'text-green-600' : 'text-slate-400'}`}>
-                                    {snap45 ? '✓' : '○'} Snap 45°
-                                </span>
-                            </div>
-                            <div className="canvas-legend__item">
-                                <span className={`text-xs font-semibold ${reverseDrawing ? 'text-red-600' : 'text-slate-400'}`}>
-                                    {reverseDrawing ? '↶' : '↷'} {reverseDrawing ? 'Reversa' : 'Adelante'}
-                                </span>
-                            </div>
-                            <div className="canvas-legend__item">
-                                <span className={`text-xs font-semibold ${referenceMode === 'tip' ? 'text-orange-600' : 'text-blue-600'}`}>
-                                    {referenceMode === 'tip' ? '▶' : '●'} {referenceMode === 'tip' ? 'Punta' : 'Centro'}
-                                </span>
+                            <div className="w-px h-3 bg-slate-300 mx-1"></div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-orange-500"></span> <span>Punta</span>
                             </div>
                         </div>
-                    </section>
-                </div>
-            </main>
+                        <div className="bg-white/90 backdrop-blur py-1 px-3 rounded-full border border-slate-200/50 shadow-sm text-[10px] text-slate-400">
+                            Tapete: 2362mm × 1143mm
+                        </div>
+                    </div>
+                </main>
+            </div>
 
             <OptionsPanel
                 showOptions={showOptions}
@@ -446,8 +454,6 @@ export default function WROPlaybackPlanner() {
                 robotImageRotation={robotImageRotation}
                 setRobotImageRotation={setRobotImageRotation}
             />
-
-            <footer className="footer-note">Dimensiones del tapete: 2362mm × 1143mm.</footer>
         </div>
     );
 }
