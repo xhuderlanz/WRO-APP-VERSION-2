@@ -24,7 +24,8 @@ import {
     buildReversePlayback,
     buildActionsFromPolyline,
     pointsFromActions,
-    projectPointWithReference
+    projectPointWithReference,
+    getPoseAfterActions
 } from "./domain/geometry";
 import {
     recalcAfterEditStable as recalcAllFollowingSections,
@@ -210,17 +211,56 @@ export default function WROPlaybackPlanner() {
 
     const updateSectionActions = useCallback((sectionId, newActions) => {
         setSections(prev => {
-            // 1. Regenerate points ONLY for this section from the new actions
+            // Find the section and update its actions directly
             const modified = prev.map(s => {
                 if (s.id !== sectionId) return s;
+                // Calculate start pose for this section
                 const startPose = computePoseUpToSection(prev, initialPose, s.id, unitToPx);
+                // Regenerate points from the new/reordered actions
                 const newPoints = pointsFromActions(newActions, startPose, unitToPx);
-                return { ...s, points: newPoints, actions: newActions };
+                // Calculate end pose
+                const endPose = getPoseAfterActions(startPose, newActions, unitToPx);
+                // Return section with new actions PRESERVED (not regenerated)
+                return {
+                    ...s,
+                    points: newPoints,
+                    actions: newActions,
+                    startAngle: startPose.theta * RAD2DEG,
+                    endAngle: endPose.theta * RAD2DEG
+                };
             });
-            // 2. Recalculate ALL sections to maintain consistency
-            return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
+
+            // Now update following sections (their start points need to connect)
+            // but we don't want to regenerate actions for those either
+            const changedIndex = modified.findIndex(s => s.id === sectionId);
+            if (changedIndex === -1 || changedIndex === modified.length - 1) {
+                return modified;
+            }
+
+            // For following sections, just update their start pose/angles
+            let runningPose = getPoseAfterActions(
+                computePoseUpToSection(modified, initialPose, sectionId, unitToPx),
+                newActions,
+                unitToPx
+            );
+
+            const result = [...modified];
+            for (let i = changedIndex + 1; i < result.length; i++) {
+                const section = result[i];
+                const endPose = getPoseAfterActions(runningPose, section.actions, unitToPx);
+                const updatedPoints = pointsFromActions(section.actions, runningPose, unitToPx);
+                result[i] = {
+                    ...section,
+                    points: updatedPoints,
+                    startAngle: runningPose.theta * RAD2DEG,
+                    endAngle: endPose.theta * RAD2DEG
+                };
+                runningPose = endPose;
+            }
+
+            return result;
         });
-    }, [initialPose, unitToPx, pxToUnit]);
+    }, [initialPose, unitToPx]);
 
     const removeLastPointFromCurrentSection = useCallback(() => {
         if (!currentSection || currentSection.points.length === 0) return;
