@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { IconTarget } from "./icons";
 import { FIELD_PRESETS, DEG2RAD, RAD2DEG } from "./domain/constants";
 
-const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOpacity, setBgOpacity, grid, setGrid, robot, setRobot, initialPose, setInitialPose, handleBgUpload, handleRobotImageUpload, setIsSettingOrigin, unit, setUnit, cursorGuideColor, setCursorGuideColor, cursorGuideLineWidth, setCursorGuideLineWidth, ghostRobotOpacity, setGhostRobotOpacity, robotImageRotation, setRobotImageRotation }) => {
+const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOpacity, setBgOpacity, grid, setGrid, robot, setRobot, initialPose, setInitialPose, handleBgUpload, handleRobotImageUpload, setIsSettingOrigin, unit, onToggleUnit, cursorGuideColor, setCursorGuideColor, cursorGuideLineWidth, setCursorGuideLineWidth, ghostRobotOpacity, setGhostRobotOpacity, robotImageRotation, setRobotImageRotation }) => {
     const isMM = unit === 'mm';
     const sizeMin = isMM ? 1 : 0.1;
     const sizeMax = isMM ? 50 : 5;
@@ -29,11 +29,10 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
 
     const handleSizeChange = (valueStr) => {
         const value = parseFloat(valueStr) || 0;
-        const cmValue = isMM ? value / 10 : value;
-        setGrid(g => ({ ...g, cellSize: Math.max(0.1, Math.min(5, cmValue)) }));
+        setGrid(g => ({ ...g, cellSize: Math.max(sizeMin, Math.min(sizeMax, value)) }));
     };
 
-    const numericCellSize = isMM ? grid.cellSize * 10 : grid.cellSize;
+    const numericCellSize = grid.cellSize;
     const formattedCellSize = isMM ? numericCellSize.toFixed(1) : numericCellSize.toFixed(2);
 
     return (
@@ -105,7 +104,7 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                         <button
                                             type="button"
                                             className="option-chip-button"
-                                            onClick={() => setUnit(u => u === 'cm' ? 'mm' : 'cm')}
+                                            onClick={onToggleUnit}
                                         >
                                             Mostrar en {unit === 'cm' ? 'milímetros' : 'centímetros'}
                                         </button>

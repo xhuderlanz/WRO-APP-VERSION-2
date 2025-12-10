@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import Toolbar from "./Toolbar";
+import TopBar from "./TopBar";
 import SectionsPanel from "./SectionsPanel";
 import OptionsPanel from "./OptionsPanel";
 import CanvasBoard from "./CanvasBoard";
@@ -68,6 +68,7 @@ export default function WROPlaybackPlanner() {
     const [reverseDrawing, setReverseDrawing] = useState(false);
     const [referenceMode, setReferenceMode] = useState('center');
     const [zoom, setZoom] = useState(1);
+    const [pan, setPan] = useState({ x: 0, y: 0 });
     const [canvasBaseSize, setCanvasBaseSize] = useState({ width: 0, height: 0 });
     const [cursorGuide, setCursorGuide] = useState({ x: 0, y: 0, visible: false });
     const [cursorGuideColor, setCursorGuideColor] = useState('#ff0000ff');
@@ -108,7 +109,7 @@ export default function WROPlaybackPlanner() {
         pauseResume,
         stopPlayback,
         actionCursorRef
-    } = usePlayback({ initialPose, sections, unitToPx, currentSection, playbackSpeed });
+    } = usePlayback({ initialPose, sections, unitToPx, currentSection, playbackSpeed, unit });
 
     useEffect(() => {
         const preset = FIELD_PRESETS.find(p => p.key === fieldKey);
@@ -131,21 +132,36 @@ export default function WROPlaybackPlanner() {
         }
     }, [robot.imageSrc]);
 
+    // Auto-expand selected section and minimize others
+    useEffect(() => {
+        setExpandedSections([selectedSectionId]);
+    }, [selectedSectionId]);
+
+    const containerRef = useRef(null);
+
     useEffect(() => {
         const updateSize = () => {
-            const container = document.querySelector('.canvas-card');
+            const container = containerRef.current;
             if (container) {
                 const rect = container.getBoundingClientRect();
                 const aspect = MAT_MM.w / MAT_MM.h;
+                // Subtract padding if necessary, but rect.width includes padding if box-sizing is border-box.
+                // We want the canvas to fill the available space. 
+                // Let's rely on the container width.
                 const w = Math.max(200, Math.floor(rect.width));
                 const h = Math.floor(w / aspect);
                 setCanvasBaseSize({ width: w, height: h });
             }
         };
-        window.addEventListener('resize', updateSize);
-        // Delay slightly to ensure DOM is ready
-        setTimeout(updateSize, 0);
-        return () => window.removeEventListener('resize', updateSize);
+        const resizeObserver = new ResizeObserver(() => updateSize());
+        if (containerRef.current) {
+            resizeObserver.observe(containerRef.current);
+        }
+
+        // Initial sizing
+        updateSize();
+
+        return () => resizeObserver.disconnect();
     }, []);
 
     const handleBgUpload = (e) => {
@@ -209,7 +225,9 @@ export default function WROPlaybackPlanner() {
     };
 
     const toggleSectionExpansion = (id) => {
-        setExpandedSections(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+        // Accordion behavior: if clicking an already expanded section, close it (empty array).
+        // Otherwise, set it as the ONLY expanded section.
+        setExpandedSections(prev => prev.includes(id) ? [] : [id]);
     };
 
     const toggleSectionVisibility = (id) => {
@@ -223,7 +241,7 @@ export default function WROPlaybackPlanner() {
 
     const handleZoomIn = () => setZoom(z => Math.min(z + ZOOM_LIMITS.step, ZOOM_LIMITS.max));
     const handleZoomOut = () => setZoom(z => Math.max(z - ZOOM_LIMITS.step, ZOOM_LIMITS.min));
-    const handleZoomReset = () => setZoom(1);
+    const handleZoomReset = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
 
     const exportMission = () => {
         const data = {
@@ -270,64 +288,82 @@ export default function WROPlaybackPlanner() {
         e.preventDefault();
     }, []);
 
+    const toggleUnit = () => {
+        const nextUnit = unit === 'cm' ? 'mm' : 'cm';
+        const factor = nextUnit === 'mm' ? 10 : 0.1;
+
+        setRobot(r => ({ ...r, width: r.width * factor, length: r.length * factor, wheelOffset: r.wheelOffset ? r.wheelOffset * factor : r.wheelOffset }));
+        setGrid(g => ({ ...g, cellSize: g.cellSize * factor }));
+        setSections(secs => secs.map(s => ({
+            ...s,
+            actions: s.actions.map(a => a.type === 'move' ? { ...a, distance: a.distance * factor } : a)
+        })));
+        setUnit(nextUnit);
+    };
+
     return (
-        <div className="w-full h-full min-h-screen">
-            <main className="app-shell">
-                <Toolbar
-                    drawMode={drawMode}
-                    setDrawMode={setDrawMode}
-                    snap45={snap45}
-                    setSnap45={setSnap45}
-                    isRunning={isRunning}
-                    isPaused={isPaused}
-                    startMission={startMission}
-                    startMissionReverse={startMissionReverse}
-                    startSection={startSection}
-                    startSectionReverse={startSectionReverse}
-                    pauseResume={pauseResume}
-                    stopPlayback={stopPlayback}
-                    setShowOptions={setShowOptions}
-                    rulerActive={rulerActive}
-                    handleRulerToggle={handleRulerToggle}
-                    reverseDrawing={reverseDrawing}
-                    onToggleReverse={() => setReverseDrawing(p => !p)}
-                    referenceMode={referenceMode}
-                    onReferenceModeChange={setReferenceMode}
-                    zoom={zoom}
-                    onZoomIn={handleZoomIn}
-                    onZoomOut={handleZoomOut}
-                    onZoomReset={handleZoomReset}
-                    playbackSpeed={playbackSpeed}
-                    setPlaybackSpeed={setPlaybackSpeed}
-                />
+        <div className="h-screen w-full bg-slate-100 flex flex-col overflow-hidden text-slate-800 font-sans selection:bg-indigo-100">
+            {/* Header Area */}
+            <header className="shrink-0 px-6 pt-4 pb-2">
+                <div className="max-w-[1920px] mx-auto">
+                    <TopBar
+                        drawMode={drawMode}
+                        setDrawMode={setDrawMode}
+                        snap45={snap45}
+                        setSnap45={setSnap45}
+                        isRunning={isRunning}
+                        isPaused={isPaused}
+                        startMission={startMission}
+                        startMissionReverse={startMissionReverse}
+                        startSection={startSection}
+                        startSectionReverse={startSectionReverse}
+                        pauseResume={pauseResume}
+                        stopPlayback={stopPlayback}
+                        setShowOptions={setShowOptions}
+                        rulerActive={rulerActive}
+                        handleRulerToggle={handleRulerToggle}
+                        reverseDrawing={reverseDrawing}
+                        onToggleReverse={() => setReverseDrawing(p => !p)}
+                        referenceMode={referenceMode}
+                        onReferenceModeChange={setReferenceMode}
+                        zoom={zoom}
+                        onZoomIn={handleZoomIn}
+                        onZoomOut={handleZoomOut}
+                        onZoomReset={handleZoomReset}
+                        playbackSpeed={playbackSpeed}
+                        setPlaybackSpeed={setPlaybackSpeed}
+                    />
+                </div>
+            </header>
 
-                <div className="main-grid">
-                    {/* PANEL IZQUIERDO (card) */}
-                    <aside className="left-panel">
-                        <div className="sections-list">
-                            <SectionsPanel
-                                sections={sections}
-                                setSections={setSections}
-                                selectedSectionId={selectedSectionId}
-                                setSelectedSectionId={setSelectedSectionId}
-                                addSection={addSection}
-                                exportMission={exportMission}
-                                importMission={importMission}
-                                updateSectionActions={updateSectionActions}
-                                computePoseUpToSection={(sectionId) => computePoseUpToSection(sections, initialPose, sectionId, unitToPx)}
-                                pxToUnit={pxToUnit}
-                                isCollapsed={isSectionsPanelCollapsed}
-                                setIsCollapsed={setIsSectionsPanelCollapsed}
-                                expandedSections={expandedSections}
-                                toggleSectionExpansion={toggleSectionExpansion}
-                                toggleSectionVisibility={toggleSectionVisibility}
-                                unit={unit}
-                            />
-                        </div>
-                    </aside>
+            {/* Main Content Area */}
+            <div className="flex-1 flex overflow-hidden px-6 pb-6 gap-6 max-w-[1920px] mx-auto w-full">
 
-                    {/* AREA DEL CANVAS (card limpia) */}
-                    <section className="canvas-card" aria-label="Canvas">
+                {/* Left Panel - SECTIONS */}
+                <aside style={{ width: 400, flexShrink: 0, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                    <SectionsPanel
+                        sections={sections}
+                        setSections={setSections}
+                        selectedSectionId={selectedSectionId}
+                        setSelectedSectionId={setSelectedSectionId}
+                        addSection={addSection}
+                        exportMission={exportMission}
+                        importMission={importMission}
+                        updateSectionActions={updateSectionActions}
+                        computePoseUpToSection={(sectionId) => computePoseUpToSection(sections, initialPose, sectionId, unitToPx)}
+                        pxToUnit={pxToUnit}
+                        isCollapsed={isSectionsPanelCollapsed}
+                        setIsCollapsed={setIsSectionsPanelCollapsed}
+                        expandedSections={expandedSections}
+                        toggleSectionExpansion={toggleSectionExpansion}
+                        toggleSectionVisibility={toggleSectionVisibility}
+                        unit={unit}
+                    />
+                </aside>
+
+                {/* Right Panel - CANVAS */}
+                <main ref={containerRef} className="flex-1 bg-white rounded-3xl border border-slate-200 shadow-2xl relative overflow-hidden flex flex-col items-center justify-center bg-slate-50/50">
+                    <div className="absolute inset-0 z-0 flex items-center justify-center">
                         <CanvasBoard
                             fieldKey={fieldKey}
                             bgImage={bgImage}
@@ -389,35 +425,32 @@ export default function WROPlaybackPlanner() {
                             ghostOpacityOverride={ghostOpacityOverride}
                             setGhostOpacityOverride={setGhostOpacityOverride}
                             robotImageRotation={robotImageRotation}
+                            // Zoom & Pan controls
+                            setZoom={setZoom}
+                            pan={pan}
+                            setPan={setPan}
                         />
-                        <div className="canvas-legend" aria-hidden="true">
-                            <div className="canvas-legend__item">
-                                <span className="canvas-legend__swatch canvas-legend__swatch--center" />
-                                <span className="text-xs text-slate-600">Centro de ruedas</span>
+                    </div>
+
+                    {/* Floating Legend / Footer info inside canvas area */}
+                    <div style={{ position: 'absolute', bottom: 16, right: 16, zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, pointerEvents: 'none' }}>
+                        <div className="option-card" style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: 8, pointerEvents: 'auto' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#6366f1' }}></span>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569' }}>Centro</span>
                             </div>
-                            <div className="canvas-legend__item">
-                                <span className="canvas-legend__swatch canvas-legend__swatch--tip" />
-                                <span className="text-xs text-slate-600">Punta del robot</span>
-                            </div>
-                            <div className="canvas-legend__item">
-                                <span className={`text-xs font-semibold ${snap45 ? 'text-green-600' : 'text-slate-400'}`}>
-                                    {snap45 ? '✓' : '○'} Snap 45°
-                                </span>
-                            </div>
-                            <div className="canvas-legend__item">
-                                <span className={`text-xs font-semibold ${reverseDrawing ? 'text-red-600' : 'text-slate-400'}`}>
-                                    {reverseDrawing ? '↶' : '↷'} {reverseDrawing ? 'Reversa' : 'Adelante'}
-                                </span>
-                            </div>
-                            <div className="canvas-legend__item">
-                                <span className={`text-xs font-semibold ${referenceMode === 'tip' ? 'text-orange-600' : 'text-blue-600'}`}>
-                                    {referenceMode === 'tip' ? '▶' : '●'} {referenceMode === 'tip' ? 'Punta' : 'Centro'}
-                                </span>
+                            <div style={{ width: 1, height: 12, background: 'rgba(148,163,184,0.35)' }}></div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f97316' }}></span>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569' }}>Punta</span>
                             </div>
                         </div>
-                    </section>
-                </div>
-            </main>
+                        <div style={{ background: 'rgba(255,255,255,0.9)', padding: '0.35rem 0.75rem', borderRadius: 999, border: '1px solid rgba(148,163,184,0.3)', fontSize: '0.65rem', color: '#94a3b8' }}>
+                            Tapete: 2362mm × 1143mm
+                        </div>
+                    </div>
+                </main>
+            </div>
 
             <OptionsPanel
                 showOptions={showOptions}
@@ -436,7 +469,7 @@ export default function WROPlaybackPlanner() {
                 handleRobotImageUpload={handleRobotImageUpload}
                 setIsSettingOrigin={setIsSettingOrigin}
                 unit={unit}
-                setUnit={setUnit}
+                onToggleUnit={toggleUnit}
                 cursorGuideColor={cursorGuideColor}
                 setCursorGuideColor={setCursorGuideColor}
                 cursorGuideLineWidth={cursorGuideLineWidth}
@@ -446,8 +479,6 @@ export default function WROPlaybackPlanner() {
                 robotImageRotation={robotImageRotation}
                 setRobotImageRotation={setRobotImageRotation}
             />
-
-            <footer className="footer-note">Dimensiones del tapete: 2362mm × 1143mm.</footer>
         </div>
     );
 }

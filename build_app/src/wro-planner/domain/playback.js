@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { DEG2RAD } from "./constants";
 import { getPoseAfterActions, buildReversePlayback, computePoseUpToSection } from "./geometry";
 
-export function usePlayback({ initialPose, sections, unitToPx, currentSection, playbackSpeed = 1 }) {
+export function usePlayback({ initialPose, sections, unitToPx, currentSection, playbackSpeed = 1, unit = 'cm' }) {
     const [isRunning, setIsRunning] = useState(false);
     const [isPaused, setIsPaused] = useState(false);
     const [playPose, setPlayPose] = useState({ ...initialPose });
@@ -34,7 +34,8 @@ export function usePlayback({ initialPose, sections, unitToPx, currentSection, p
         }
         const a = ac.list[ac.idx];
         const rotStep = 5 * DEG2RAD * playbackSpeed;
-        const speedPx = (unitToPx(40) / 60) * playbackSpeed;
+        const baseSpeed = unit === 'mm' ? 400 : 40;
+        const speedPx = (unitToPx(baseSpeed) / 60) * playbackSpeed;
 
         setPlayPose(prev => {
             let pose = { ...prev };
@@ -81,7 +82,7 @@ export function usePlayback({ initialPose, sections, unitToPx, currentSection, p
             return pose;
         });
         animRef.current = requestAnimationFrame(tick);
-    }, [stopPlayback, unitToPx, playbackSpeed]);
+    }, [stopPlayback, unitToPx, playbackSpeed, unit]);
 
     const startPlayback = useCallback((list, startPose) => {
         cancelAnimationFrame(animRef.current);

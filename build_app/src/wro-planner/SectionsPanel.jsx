@@ -1,131 +1,214 @@
 import React, { useState } from "react";
-import { IconChevronRight, IconChevronLeft, IconChevronDown, IconEye, IconEyeOff, IconGripVertical } from "./icons";
+import { IconChevronRight, IconChevronLeft, IconChevronDown, IconEye, IconEyeOff, IconGripVertical, IconTrash } from "./icons";
 import { RAD2DEG } from "./domain/constants";
 
 const SectionsPanel = ({ sections, setSections, selectedSectionId, setSelectedSectionId, addSection, exportMission, importMission, updateSectionActions, computePoseUpToSection, pxToUnit, isCollapsed, setIsCollapsed, expandedSections, toggleSectionExpansion, toggleSectionVisibility, unit }) => {
     const [draggedAction, setDraggedAction] = useState(null);
 
-    const handleActionDragStart = (e, sectionId, actionIndex) => { setDraggedAction({ sectionId, actionIndex }); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); };
-    const handleActionDrop = (e, targetSectionId, targetActionIndex) => { e.preventDefault(); if (!draggedAction || draggedAction.sectionId !== targetSectionId) return; const { actionIndex: draggedIndex } = draggedAction; if (draggedIndex === targetActionIndex) return; const section = sections.find(s => s.id === targetSectionId); if (!section) return; const reorderedActions = [...section.actions]; const [draggedItem] = reorderedActions.splice(draggedIndex, 1); reorderedActions.splice(targetActionIndex, 0, draggedItem); updateSectionActions(targetSectionId, reorderedActions); };
+    const handleActionDragStart = (e, sectionId, actionIndex) => {
+        setDraggedAction({ sectionId, actionIndex });
+        e.dataTransfer.effectAllowed = 'move';
+    };
 
+    const handleActionDrop = (e, targetSectionId, targetActionIndex) => {
+        e.preventDefault();
+        if (!draggedAction || draggedAction.sectionId !== targetSectionId) return;
+        const section = sections.find(s => s.id === targetSectionId);
+        if (!section) return;
+        const reordered = [...section.actions];
+        const [item] = reordered.splice(draggedAction.actionIndex, 1);
+        reordered.splice(targetActionIndex, 0, item);
+        updateSectionActions(targetSectionId, reordered);
+    };
+
+    const deleteSection = (sectionId) => {
+        if (sections.length <= 1) return; // Don't delete the last section
+        setSections(prev => prev.filter(s => s.id !== sectionId));
+        if (selectedSectionId === sectionId) {
+            const remaining = sections.filter(s => s.id !== sectionId);
+            if (remaining.length > 0) setSelectedSectionId(remaining[0].id);
+        }
+    };
+
+    // Collapsed state - show expand button
     if (isCollapsed) {
         return (
-            <div className="panel-card self-start flex items-center justify-center w-16 h-16">
-                <button
-                    onClick={() => setIsCollapsed(false)}
-                    className="toolbar-btn toolbar-btn--muted"
-                    title="Expandir Panel"
-                >
-                    <IconChevronRight />
-                </button>
+            <div className="sections-panel" style={{ width: 'auto', minWidth: 60 }}>
+                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                    <button
+                        onClick={() => setIsCollapsed(false)}
+                        className="option-action-button"
+                        style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                        <IconChevronRight style={{ width: 20, height: 20 }} />
+                    </button>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="panel-card self-start">
-            <div className="flex items-center justify-between gap-2">
-                <h2 className="text-xl font-semibold text-slate-700">Secciones</h2>
-                <div className="flex items-center gap-2">
-                    <button onClick={addSection} className="toolbar-btn toolbar-btn--emerald text-sm">+ Añadir</button>
-                    <button onClick={() => setIsCollapsed(true)} className="toolbar-btn toolbar-btn--muted" title="Minimizar Panel">
-                        <IconChevronLeft />
-                    </button>
+        <div className="sections-panel">
+            {/* Header */}
+            <div className="sections-panel__header">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                        <h3 className="sections-panel__title">Secciones</h3>
+                        <p className="sections-panel__subtitle">Configura las rutas del robot para tu misión.</p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button onClick={addSection} className="option-action-button">+ Nueva</button>
+                        <button
+                            onClick={() => setIsCollapsed(true)}
+                            className="options-close-btn"
+                            style={{ padding: '0.5rem' }}
+                        >
+                            <IconChevronLeft style={{ width: 16, height: 16 }} />
+                        </button>
+                    </div>
                 </div>
             </div>
-            <div className="section-scroll space-y-3">
+
+            {/* Info */}
+            {sections.length > 0 && (
+                <div className="sections-panel__info">
+                    <b>{sections.length}</b> {sections.length === 1 ? 'sección creada' : 'secciones creadas'}. Selecciona una para editarla.
+                </div>
+            )}
+
+            {/* Content */}
+            <div className="sections-panel__content">
                 {sections.map(s => {
                     const isExpanded = expandedSections.includes(s.id);
+                    const isActive = selectedSectionId === s.id;
+
                     return (
                         <div
                             key={s.id}
-                            className={`section-card ${selectedSectionId === s.id ? 'section-card--active' : ''}`}
                             onClick={() => setSelectedSectionId(s.id)}
+                            className={`section-card ${isActive ? 'section-card--active' : ''}`}
                         >
-                            <div className="section-card__header px-3 py-2">
+                            {/* Header */}
+                            <div className="section-card__header">
                                 <button
                                     onClick={(e) => { e.stopPropagation(); toggleSectionExpansion(s.id); }}
-                                    className="toolbar-btn toolbar-btn--muted px-2 py-1"
+                                    className="section-card__expand-btn"
                                 >
-                                    {isExpanded ? <IconChevronDown /> : <IconChevronRight />}
+                                    {isExpanded ? <IconChevronDown style={{ width: 16, height: 16 }} /> : <IconChevronRight style={{ width: 16, height: 16 }} />}
                                 </button>
+
+                                <div className="section-card__color" style={{ backgroundColor: s.color || '#6366f1' }}></div>
+
                                 <input
-                                    className="flex-1 border border-slate-200/70 rounded-lg px-3 py-1 text-sm bg-white/80"
+                                    className="section-card__name"
                                     value={s.name}
                                     onChange={e => setSections(prev => prev.map(x => x.id === s.id ? { ...x, name: e.target.value } : x))}
                                     onClick={e => e.stopPropagation()}
+                                    style={{ minWidth: 0 }}
                                 />
+
                                 <input
                                     type="color"
-                                    className="w-9 h-9 rounded-lg border border-slate-200/50"
-                                    value={s.color || '#0ea5e9'}
+                                    className="option-field__control option-field__control--color"
+                                    value={s.color || '#6366f1'}
                                     onChange={e => setSections(prev => prev.map(x => x.id === s.id ? { ...x, color: e.target.value } : x))}
                                     onClick={e => e.stopPropagation()}
+                                    style={{ width: 28, height: 28 }}
                                 />
+
                                 <button
                                     onClick={(e) => { e.stopPropagation(); toggleSectionVisibility(s.id); }}
-                                    className={`toolbar-btn px-2 py-1 ${s.isVisible ? 'toolbar-btn--muted' : 'toolbar-btn--muted opacity-40'}`}
+                                    className="section-card__visibility-btn"
+                                    style={{ flexShrink: 0 }}
                                 >
-                                    {s.isVisible ? <IconEye /> : <IconEyeOff />}
+                                    {s.isVisible ? <IconEye style={{ width: 16, height: 16 }} /> : <IconEyeOff style={{ width: 16, height: 16 }} />}
+                                </button>
+
+                                {/* DELETE SECTION BUTTON - always visible, rigid size */}
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (sections.length <= 1) {
+                                            alert('No puedes eliminar la única sección');
+                                            return;
+                                        }
+                                        if (window.confirm(`¿Eliminar "${s.name}"?`)) deleteSection(s.id);
+                                    }}
+                                    className="section-card__visibility-btn"
+                                    style={{
+                                        color: sections.length > 1 ? '#ef4444' : '#cbd5e1',
+                                        flexShrink: 0,
+                                        width: '2rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                    }}
+                                    title={sections.length > 1 ? 'Eliminar sección' : 'No se puede eliminar la única sección'}
+                                >
+                                    <IconTrash style={{ width: 16, height: 16 }} />
                                 </button>
                             </div>
+
+                            {/* Content */}
                             {isExpanded && (
-                                <div className="section-card__content" onDrop={() => setDraggedAction(null)} onDragEnd={() => setDraggedAction(null)}>
-                                    <div className="text-xs text-slate-500">Inicio: {(() => { const start = computePoseUpToSection(s.id); return `${pxToUnit(start.x).toFixed(1)}cm, ${pxToUnit(start.y).toFixed(1)}cm, ${Math.round(start.theta * RAD2DEG)}°`; })()}</div>
-                                    <div className="text-xs text-slate-600 font-semibold">Acciones:</div>
-                                    {s.actions.length === 0 ? (<div className="text-xs text-slate-500">Sin acciones. Dibuja para crear.</div>) : (
+                                <div className="section-card__content">
+                                    <div className="section-card__start-info">
+                                        <span className="section-card__start-label">Inicio</span>
+                                        <span className="section-card__start-value">
+                                            {(() => { const st = computePoseUpToSection(s.id); return `X: ${pxToUnit(st.x).toFixed(1)} | Y: ${pxToUnit(st.y).toFixed(1)} | θ: ${Math.round(st.theta * RAD2DEG)}°`; })()}
+                                        </span>
+                                    </div>
+
+                                    {/* Removed redundant 'Acciones' label */}
+
+                                    {s.actions.length === 0 ? (
+                                        <div className="section-card__empty">
+                                            Dibuja en el mapa para añadir acciones
+                                        </div>
+                                    ) : (
                                         s.actions.map((a, i) => {
-                                            const isDragging = draggedAction?.sectionId === s.id && draggedAction?.actionIndex === i;
+                                            const isMove = a.type === 'move';
                                             return (
                                                 <div
                                                     key={i}
                                                     draggable
                                                     onDragStart={(e) => handleActionDragStart(e, s.id, i)}
-                                                    onDrop={(e) => handleActionDrop(e, s.id, i)}
                                                     onDragOver={(e) => e.preventDefault()}
-                                                    className={`section-card__actions ${isDragging ? 'opacity-60 border-dashed border-indigo-300' : 'border-slate-200/70'}`}
+                                                    onDrop={(e) => handleActionDrop(e, s.id, i)}
+                                                    className="action-item"
                                                 >
-                                                    <span className="cursor-move touch-none p-1 text-slate-400"><IconGripVertical /></span>
-                                                    <span className="text-xs font-medium text-slate-600">#{i + 1} {a.type === 'move' ? 'Avanzar' : 'Girar'}</span>
-                                                    {a.type === 'move' ? (
-                                                        <div className="section-card__field">
-                                                            <label className="text-xs flex items-center gap-2">Dist ({unit})
-                                                                <input
-                                                                    type="number"
-                                                                    step={unit === 'mm' ? 0.1 : 0.01}
-                                                                    className="w-full border border-slate-200/80 rounded-lg px-2 py-1 text-slate-700 bg-white/80"
-                                                                    value={unit === 'mm' ? (a.distance * 10).toFixed(1) : a.distance.toFixed(2)}
-                                                                    onChange={e => {
-                                                                        const val = parseFloat(e.target.value) || 0;
-                                                                        const cmValue = unit === 'mm' ? val / 10 : val;
-                                                                        const newActions = s.actions.map((act, idx) => (i === idx ? { ...act, distance: cmValue } : act));
-                                                                        updateSectionActions(s.id, newActions);
-                                                                    }}
-                                                                />
-                                                            </label>
-                                                            <div className={`section-card__meta ${a.reference === 'tip' ? 'section-card__meta--tip' : 'section-card__meta--center'}`}>
-                                                                {a.reference === 'tip' ? 'Medido desde la punta del robot' : 'Medido desde el centro de las ruedas'}
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <label className="text-xs flex items-center gap-2">Ángulo (°)
-                                                            <input
-                                                                type="number"
-                                                                step="1"
-                                                                className="w-full border border-slate-200/80 rounded-lg px-2 py-1 text-slate-700 bg-white/80"
-                                                                value={a.angle}
-                                                                onChange={e => {
-                                                                    const newActions = s.actions.map((act, idx) => (i === idx ? { ...act, angle: parseFloat(e.target.value) || 0 } : act));
-                                                                    updateSectionActions(s.id, newActions);
-                                                                }}
-                                                            />
-                                                        </label>
-                                                    )}
+                                                    <div className="action-item__drag">
+                                                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginRight: 6, minWidth: 14, textAlign: 'center' }}>{i + 1}</span>
+                                                        <IconGripVertical style={{ width: 14, height: 14 }} />
+                                                    </div>
+
+                                                    <span className={`action-item__type ${isMove ? 'action-item__type--move' : 'action-item__type--turn'}`}>
+                                                        {isMove ? 'MOV' : 'GIRO'}
+                                                    </span>
+
+                                                    <input
+                                                        type="number"
+                                                        className="action-item__input"
+                                                        value={isMove ? (unit === 'mm' ? a.distance.toFixed(1) : a.distance.toFixed(2)) : a.angle}
+                                                        onChange={(e) => {
+                                                            const val = parseFloat(e.target.value) || 0;
+                                                            const newActions = [...s.actions];
+                                                            if (isMove) {
+                                                                newActions[i] = { ...a, distance: val };
+                                                            } else {
+                                                                newActions[i] = { ...a, angle: val };
+                                                            }
+                                                            updateSectionActions(s.id, newActions);
+                                                        }}
+                                                    />
+
+                                                    <span className="action-item__unit">{isMove ? unit : '°'}</span>
+
                                                     <button
-                                                        onClick={() => { const newActions = s.actions.filter((_, idx) => idx !== i); updateSectionActions(s.id, newActions); }}
-                                                        className="toolbar-btn toolbar-btn--rose px-2 py-1 text-[11px]"
+                                                        onClick={() => { const arr = [...s.actions]; arr.splice(i, 1); updateSectionActions(s.id, arr); }}
+                                                        className="action-item__delete"
                                                     >
-                                                        Quitar
+                                                        ×
                                                     </button>
                                                 </div>
                                             );
@@ -136,12 +219,24 @@ const SectionsPanel = ({ sections, setSections, selectedSectionId, setSelectedSe
                         </div>
                     );
                 })}
+
+                {sections.length === 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem 1rem', textAlign: 'center' }}>
+                        <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🗺️</div>
+                        <p style={{ fontWeight: 600, color: '#475569', margin: 0 }}>No hay secciones</p>
+                        <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '0.25rem' }}>Crea una para empezar a planificar</p>
+                    </div>
+                )}
             </div>
-            <div className="pt-2 flex flex-wrap gap-2">
-                <button onClick={exportMission} className="toolbar-btn toolbar-btn--amber text-sm">Guardar (.json)</button>
-                <label className="toolbar-btn toolbar-btn--muted text-sm cursor-pointer">
+
+            {/* Footer */}
+            <div className="sections-panel__footer">
+                <button onClick={exportMission} className="options-close-btn" style={{ flex: 1, justifyContent: 'center' }}>
+                    Guardar
+                </button>
+                <label className="option-action-button" style={{ flex: 1, textAlign: 'center', cursor: 'pointer' }}>
                     Cargar
-                    <input type="file" accept="application/json" className="hidden" onChange={importMission} />
+                    <input type="file" accept="application/json" style={{ display: 'none' }} onChange={importMission} />
                 </label>
             </div>
         </div>
