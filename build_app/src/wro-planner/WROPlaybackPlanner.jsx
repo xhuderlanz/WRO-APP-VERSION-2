@@ -3,6 +3,7 @@ import TopBar from "./TopBar";
 import SectionsPanel from "./SectionsPanel";
 import OptionsPanel from "./OptionsPanel";
 import CanvasBoard from "./CanvasBoard";
+import RobotSizeModal from "./components/RobotSizeModal";
 import { usePlayback } from "./domain/playback";
 import {
     FIELD_PRESETS,
@@ -30,13 +31,31 @@ import {
     recalcSectionFromPointsStable as recalcSectionFromPoints,
     recalcSectionsFromPointsStable
 } from "./domain/sections_stable";
+import {
+    loadRobotConfig,
+    saveRobotConfig,
+    getDefaultRobotConfig
+} from "./domain/robotConfigStorage";
 
 export default function WROPlaybackPlanner() {
     const [fieldKey, setFieldKey] = useState(FIELD_PRESETS[0].key);
     const [bgImage, setBgImage] = useState(null);
     const [bgOpacity, setBgOpacity] = useState(1);
     const [grid, setGrid] = useState({ ...DEFAULT_GRID });
-    const [robot, setRobot] = useState({ ...DEFAULT_ROBOT });
+    // Initialize robot state with saved config if available
+    const [robot, setRobot] = useState(() => {
+        const savedConfig = loadRobotConfig();
+        if (savedConfig) {
+            return {
+                ...DEFAULT_ROBOT,
+                length: savedConfig.length,
+                width: savedConfig.width,
+                wheelOffset: savedConfig.wheelOffset ?? DEFAULT_ROBOT.wheelOffset
+            };
+        }
+        return { ...DEFAULT_ROBOT };
+    });
+    const [showRobotModal, setShowRobotModal] = useState(true); // Show on load
     const [robotImgObj, setRobotImgObj] = useState(null);
     const [sections, setSections] = useState([{ id: uid('sec'), name: 'Sección 1', points: [], actions: [], color: DEFAULT_ROBOT.color, isVisible: true }]);
     const [selectedSectionId, setSelectedSectionId] = useState(sections[0].id);
@@ -478,6 +497,30 @@ export default function WROPlaybackPlanner() {
                 setGhostRobotOpacity={setGhostRobotOpacity}
                 robotImageRotation={robotImageRotation}
                 setRobotImageRotation={setRobotImageRotation}
+            />
+
+            {/* Robot Size Configuration Modal */}
+            <RobotSizeModal
+                isOpen={showRobotModal}
+                robotConfig={{
+                    length: robot.length,
+                    width: robot.width,
+                    wheelOffset: robot.wheelOffset
+                }}
+                onSave={(config) => {
+                    // Sync with robot state
+                    setRobot(r => ({
+                        ...r,
+                        length: config.length,
+                        width: config.width,
+                        wheelOffset: config.wheelOffset
+                    }));
+                    // Persist to localStorage
+                    saveRobotConfig(config);
+                    // Close modal
+                    setShowRobotModal(false);
+                }}
+                unit={unit}
             />
         </div>
     );
