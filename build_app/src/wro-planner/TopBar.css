@@ -1,0 +1,251 @@
+/* =====================================================
+   TOPBAR RESPONSIVE STYLES
+   Isolated styles for responsive topbar behavior
+   ===================================================== */
+
+/* ----- COMPACT MODE (900-1199px) ----- */
+@media (max-width: 1199px) {
+    .topbar {
+        padding: 0.5rem 0.75rem;
+        gap: 0.5rem;
+        flex-wrap: nowrap;
+    }
+
+    .topbar__card {
+        padding: 0.5rem 0.75rem;
+        gap: 0.5rem;
+        flex-wrap: nowrap;
+        flex-shrink: 1;
+    }
+
+    .topbar__chip {
+        padding: 0.4rem 0.7rem;
+        font-size: 0.78rem;
+    }
+
+    .topbar__label {
+        font-size: 0.62rem;
+    }
+
+    .topbar__group {
+        gap: 0.25rem;
+    }
+
+    .topbar__divider {
+        height: 2rem;
+    }
+
+    .topbar__action-btn {
+        padding: 0.5rem 0.9rem;
+        font-size: 0.8rem;
+    }
+
+    .topbar__secondary-btn {
+        padding: 0.4rem 0.75rem;
+        font-size: 0.78rem;
+    }
+
+    .topbar__control-btn {
+        width: 2rem;
+        height: 2rem;
+        font-size: 0.85rem;
+    }
+
+    .topbar__zoom-btn {
+        width: 1.8rem;
+        height: 1.8rem;
+        font-size: 0.95rem;
+    }
+
+    .topbar__zoom-value {
+        min-width: 2.5rem;
+        font-size: 0.72rem;
+    }
+
+    .topbar__speed-control {
+        padding: 0.3rem 0.5rem;
+    }
+
+    .topbar__speed-control input[type="range"] {
+        width: 3rem;
+    }
+
+    .topbar__speed-value {
+        font-size: 0.75rem;
+        min-width: 1.8rem;
+    }
+
+    .topbar__options-btn {
+        padding: 0.4rem 0.75rem;
+        font-size: 0.78rem;
+    }
+}
+
+/* ----- COLLAPSED MODE (<900px) ----- */
+@media (max-width: 899px) {
+    .topbar {
+        padding: 0.4rem 0.5rem;
+        gap: 0.4rem;
+        flex-wrap: nowrap;
+    }
+
+    .topbar__card {
+        padding: 0.4rem 0.6rem;
+        gap: 0.4rem;
+        flex-wrap: nowrap;
+    }
+
+    /* Hide secondary controls in collapsed mode */
+    .topbar__card--secondary {
+        display: none;
+    }
+
+    .topbar__chip {
+        padding: 0.35rem 0.6rem;
+        font-size: 0.72rem;
+    }
+
+    .topbar__label {
+        font-size: 0.58rem;
+    }
+
+    .topbar__divider {
+        display: none;
+    }
+
+    .topbar__zoom-btn {
+        width: 1.6rem;
+        height: 1.6rem;
+        font-size: 0.85rem;
+    }
+
+    .topbar__zoom-value {
+        min-width: 2rem;
+        font-size: 0.68rem;
+        padding: 0 0.3rem;
+    }
+
+    .topbar__options-btn {
+        padding: 0.35rem 0.6rem;
+        font-size: 0.72rem;
+    }
+}
+
+/* ----- HAMBURGER BUTTON ----- */
+.topbar__hamburger {
+    display: none;
+    width: 2.2rem;
+    height: 2.2rem;
+    border: none;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #ffffff;
+    border-radius: 0.6rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 16px rgba(99, 102, 241, 0.3);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.topbar__hamburger:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 24px rgba(99, 102, 241, 0.4);
+}
+
+@media (max-width: 899px) {
+    .topbar__hamburger {
+        display: flex;
+    }
+}
+
+/* ----- MOBILE MENU BACKDROP ----- */
+.topbar__mobile-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    background: rgba(0, 0, 0, 0.25);
+}
+
+/* ----- MOBILE MENU PANEL ----- */
+.topbar__mobile-menu {
+    position: fixed;
+    top: 56px;
+    right: 0.5rem;
+    z-index: 9999;
+    background: #ffffff;
+    border-radius: 1rem;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.25);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    padding: 1rem;
+    min-width: 220px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    animation: menuSlideIn 0.2s ease;
+}
+
+@keyframes menuSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.topbar__mobile-menu .topbar__group {
+    background: linear-gradient(150deg, rgba(248, 250, 252, 0.95) 0%, rgba(224, 231, 255, 0.9) 100%);
+    border-radius: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.topbar__mobile-menu .topbar__btn-group {
+    flex-wrap: wrap;
+}
+
+.topbar__mobile-menu .topbar__divider {
+    display: none;
+}
+
+.topbar__mobile-menu .topbar__label {
+    font-size: 0.68rem;
+    margin-bottom: 0.25rem;
+}
+
+.topbar__mobile-menu .topbar__chip {
+    padding: 0.45rem 0.8rem;
+    font-size: 0.8rem;
+}
+
+.topbar__mobile-menu .topbar__action-btn {
+    padding: 0.55rem 1rem;
+    font-size: 0.85rem;
+    flex: 1;
+}
+
+.topbar__mobile-menu .topbar__secondary-btn {
+    padding: 0.45rem 0.8rem;
+    font-size: 0.8rem;
+    flex: 1;
+}
+
+.topbar__mobile-menu .topbar__control-btn {
+    width: 2.2rem;
+    height: 2.2rem;
+}
+
+.topbar__mobile-menu .topbar__speed-control {
+    width: 100%;
+}
+
+.topbar__mobile-menu .topbar__speed-control input[type="range"] {
+    flex: 1;
+    width: auto;
+}

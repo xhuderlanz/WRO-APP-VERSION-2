@@ -66,6 +66,8 @@ const CanvasBoard = ({
     setZoom,
     pan,
     setPan,
+    // NEW: Pre-calculated path segments from parent (stateless architecture)
+    calculatedPathSegments = [],
 }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -426,64 +428,125 @@ const CanvasBoard = ({
             ctx.stroke();
         }
 
-        // Sections
+        // =====================================================================
+        // PATH SEGMENTS - Use pre-calculated data from parent (STATELESS)
+        // This ensures the canvas renders immediately when sections change
+        // =====================================================================
+        if (calculatedPathSegments && calculatedPathSegments.length > 0) {
+            // Group segments by section for drawing
+            const segmentsBySectionId = {};
+            calculatedPathSegments.forEach(seg => {
+                const sectionId = seg.sectionId || 'default';
+                if (!segmentsBySectionId[sectionId]) {
+                    segmentsBySectionId[sectionId] = [];
+                }
+                segmentsBySectionId[sectionId].push(seg);
+            });
+
+            // Draw each section's segments
+            Object.entries(segmentsBySectionId).forEach(([sectionId, segments]) => {
+                const section = sections.find(s => s.id === sectionId);
+                if (section && !section.isVisible) return;
+
+                segments.forEach(seg => {
+                    ctx.beginPath();
+                    ctx.strokeStyle = seg.color || '#888888';
+                    ctx.lineWidth = 3;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+
+                    // Draw dashed for reverse segments
+                    if (seg.isReverse) {
+                        ctx.setLineDash([6, 4]);
+                    } else {
+                        ctx.setLineDash([]);
+                    }
+
+                    ctx.moveTo(seg.x1, seg.y1);
+                    ctx.lineTo(seg.x2, seg.y2);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Draw direction arrow in middle of segment
+                    const midX = (seg.x1 + seg.x2) / 2;
+                    const midY = (seg.y1 + seg.y2) / 2;
+                    const segmentAngle = Math.atan2(seg.y2 - seg.y1, seg.x2 - seg.x1);
+
+                    ctx.save();
+                    ctx.translate(midX, midY);
+                    ctx.rotate(segmentAngle);
+                    ctx.fillStyle = seg.color || '#888888';
+                    ctx.beginPath();
+                    ctx.moveTo(8, 0);
+                    ctx.lineTo(0, -4);
+                    ctx.lineTo(0, 4);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                });
+            });
+        } else {
+            // FALLBACK: Legacy path drawing from sections (for backwards compatibility)
+            sections.forEach(s => {
+                if (!s.isVisible || s.points.length === 0) return;
+                const sectionStartPose = computePoseUpToSection(sections, initialPose, s.id, unitToPx);
+
+                ctx.beginPath();
+                ctx.strokeStyle = s.color;
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.moveTo(sectionStartPose.x, sectionStartPose.y);
+                for (let i = 0; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
+                ctx.stroke();
+
+                // Draw direction arrows on segments
+                let arrowPose = sectionStartPose;
+                s.points.forEach((pt) => {
+                    const reference = pt.reference || 'center';
+                    const startDisplay = getReferencePoint(arrowPose, reference, unitToPx(robot.wheelOffset ?? robot.length / 2));
+                    const dx = pt.x - arrowPose.x;
+                    const dy = pt.y - arrowPose.y;
+                    const dist = Math.hypot(dx, dy);
+                    let segmentTheta = typeof pt.heading === 'number' ? pt.heading : arrowPose.theta;
+                    if (dist >= 1e-3) {
+                        const headingToPoint = Math.atan2(dy, dx);
+                        segmentTheta = typeof pt.heading === 'number'
+                            ? pt.heading
+                            : normalizeAngle(pt.reverse ? headingToPoint + Math.PI : headingToPoint);
+                    }
+                    const endPose = { x: pt.x, y: pt.y, theta: segmentTheta };
+                    const endDisplay = getReferencePoint(endPose, reference, unitToPx(robot.wheelOffset ?? robot.length / 2));
+
+                    const midX = (startDisplay.x + endDisplay.x) / 2;
+                    const midY = (startDisplay.y + endDisplay.y) / 2;
+                    const segmentAngle = Math.atan2(endDisplay.y - startDisplay.y, endDisplay.x - startDisplay.x);
+
+                    ctx.save();
+                    ctx.translate(midX, midY);
+                    ctx.rotate(segmentAngle);
+                    ctx.fillStyle = s.color || '#000';
+                    ctx.beginPath();
+                    ctx.moveTo(8, 0);
+                    ctx.lineTo(0, -4);
+                    ctx.lineTo(0, 4);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+
+                    arrowPose = endPose;
+                });
+            });
+        }
+
+        // NODES - Still drawn from sections for edit mode interaction
         sections.forEach(s => {
             if (!s.isVisible || s.points.length === 0) return;
-            // Calculate start pose for the section
-            const sectionStartPose = computePoseUpToSection(sections, initialPose, s.id, unitToPx);
-
-            ctx.beginPath();
-            ctx.strokeStyle = s.color;
-            ctx.lineWidth = 3;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.moveTo(sectionStartPose.x, sectionStartPose.y);
-            for (let i = 0; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
-            ctx.stroke();
-
-            // Draw direction arrows on segments
-            let arrowPose = sectionStartPose;
-            s.points.forEach((pt) => {
-                const reference = pt.reference || 'center';
-                const startDisplay = getReferencePoint(arrowPose, reference, unitToPx(robot.wheelOffset ?? robot.length / 2));
-                const dx = pt.x - arrowPose.x;
-                const dy = pt.y - arrowPose.y;
-                const dist = Math.hypot(dx, dy);
-                let segmentTheta = typeof pt.heading === 'number' ? pt.heading : arrowPose.theta;
-                if (dist >= 1e-3) {
-                    const headingToPoint = Math.atan2(dy, dx);
-                    segmentTheta = typeof pt.heading === 'number'
-                        ? pt.heading
-                        : normalizeAngle(pt.reverse ? headingToPoint + Math.PI : headingToPoint);
-                }
-                const endPose = { x: pt.x, y: pt.y, theta: segmentTheta };
-                const endDisplay = getReferencePoint(endPose, reference, unitToPx(robot.wheelOffset ?? robot.length / 2));
-
-                // Draw arrow in the middle of the segment
-                const midX = (startDisplay.x + endDisplay.x) / 2;
-                const midY = (startDisplay.y + endDisplay.y) / 2;
-                const segmentAngle = Math.atan2(endDisplay.y - startDisplay.y, endDisplay.x - startDisplay.x);
-
-                ctx.save();
-                ctx.translate(midX, midY);
-                ctx.rotate(segmentAngle);
-                ctx.fillStyle = s.color || '#000';
-                ctx.beginPath();
-                ctx.moveTo(8, 0);
-                ctx.lineTo(0, -4);
-                ctx.lineTo(0, 4);
-                ctx.closePath();
-                ctx.fill();
-                ctx.restore();
-
-                arrowPose = endPose;
-            });
 
             // Nodes
             if ((selectedSectionId === s.id && drawMode) || !drawMode) {
                 s.points.forEach((p, i) => {
                     ctx.beginPath();
-                    // Highlight if this node is the one selected (dragging.sectionId/index) OR if it is being hovered
                     const isSelected = dragging.sectionId === s.id && dragging.index === i;
                     const isHovered = hoverNode.sectionId === s.id && hoverNode.index === i;
                     const isActive = isSelected || isHovered;
@@ -509,11 +572,9 @@ const CanvasBoard = ({
                     const textX = p.x + 12;
                     const textY = p.y - 12;
 
-                    // Draw white background for number
                     ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
                     ctx.fillRect(textX - textWidth / 2 - bgPadding, textY - 6, textWidth + bgPadding * 2, 12);
 
-                    // Draw number
                     ctx.fillStyle = '#1e293b';
                     ctx.fillText((i + 1).toString(), textX, textY);
                     ctx.restore();
@@ -634,7 +695,7 @@ const CanvasBoard = ({
             ctx.restore();
         }
 
-    }, [bgImage, bgOpacity, grid, unitToPx, sections, selectedSectionId, drawMode, hoverNode, ghost, isRunning, playPose, robot, robotImgObj, actionCursorRef, initialPose, drawRobot, rulerActive, rulerPoints, pxToUnit, unit, cursorGuide]);
+    }, [bgImage, bgOpacity, grid, unitToPx, sections, selectedSectionId, drawMode, hoverNode, ghost, isRunning, playPose, robot, robotImgObj, actionCursorRef, initialPose, drawRobot, rulerActive, rulerPoints, pxToUnit, unit, cursorGuide, calculatedPathSegments, dragging, cursorGuideColor, cursorGuideLineWidth]);
 
     useEffect(() => {
         const cvs = canvasRef.current;

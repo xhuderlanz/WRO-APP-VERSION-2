@@ -1,0 +1,401 @@
+/* =====================================================
+   WAYPOINTS PANEL - Instruction Display by Section
+   Matches existing SectionsPanel styling
+   ===================================================== */
+
+/* ----- PANEL LAYOUT ----- */
+.waypoints-panel {
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(to bottom, #f8fafc, #f1f5f9);
+    border-left: 1px solid rgba(148, 163, 184, 0.25);
+    min-width: 280px;
+    max-width: 340px;
+    height: 100%;
+    overflow: hidden;
+}
+
+.waypoints-panel--collapsed {
+    min-width: 48px;
+    max-width: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+}
+
+.waypoints-panel__expand-btn {
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(99, 102, 241, 0.1);
+    border: none;
+    border-radius: 0.5rem;
+    color: #6366f1;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.waypoints-panel__expand-btn:hover {
+    background: rgba(99, 102, 241, 0.2);
+    transform: scale(1.05);
+}
+
+/* ----- HEADER ----- */
+.waypoints-panel__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.7);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.waypoints-panel__header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.waypoints-panel__header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.waypoints-panel__title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0;
+}
+
+.waypoints-panel__badge {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #6366f1;
+    background: rgba(99, 102, 241, 0.1);
+    padding: 0.15rem 0.4rem;
+    border-radius: 999px;
+}
+
+.waypoints-panel__collapse-btn {
+    padding: 0.35rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 0.4rem;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.waypoints-panel__collapse-btn:hover {
+    background: rgba(148, 163, 184, 0.2);
+    color: #475569;
+}
+
+/* ----- SUMMARY ----- */
+.waypoints-panel__summary {
+    display: flex;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: rgba(99, 102, 241, 0.05);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.waypoints-panel__summary-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.waypoints-panel__summary-label {
+    font-size: 0.7rem;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.waypoints-panel__summary-value {
+    font-size: 0.75rem;
+    color: #1e293b;
+    font-weight: 600;
+}
+
+/* ----- CONTENT ----- */
+.waypoints-panel__content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* ----- EMPTY STATE ----- */
+.waypoints-panel__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    text-align: center;
+}
+
+.waypoints-panel__empty-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.waypoints-panel__empty-title {
+    font-weight: 600;
+    color: #475569;
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+.waypoints-panel__empty-subtitle {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-top: 0.25rem;
+}
+
+/* ----- SECTION GROUPS ----- */
+.waypoints-section {
+    background: white;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+
+.waypoints-section:hover {
+    border-color: rgba(99, 102, 241, 0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* ----- SECTION HEADER ----- */
+.waypoints-section__header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    cursor: pointer;
+    background: rgba(248, 250, 252, 0.5);
+    transition: background 0.2s ease;
+}
+
+.waypoints-section__header:hover {
+    background: rgba(99, 102, 241, 0.05);
+}
+
+.waypoints-section__expand-btn {
+    width: 1.6rem;
+    height: 1.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 0.4rem;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.waypoints-section__expand-btn:hover {
+    background: rgba(148, 163, 184, 0.2);
+    color: #475569;
+}
+
+.waypoints-section__color {
+    width: 0.85rem;
+    height: 0.85rem;
+    border-radius: 0.25rem;
+    flex-shrink: 0;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.waypoints-section__name {
+    flex: 1;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #334155;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.waypoints-section__count {
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: #94a3b8;
+    background: rgba(148, 163, 184, 0.1);
+    padding: 0.15rem 0.4rem;
+    border-radius: 0.25rem;
+}
+
+.waypoints-section__delete-btn {
+    width: 1.6rem;
+    height: 1.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 0.4rem;
+    color: #cbd5e1;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.waypoints-section__delete-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+/* ----- SECTION CONTENT ----- */
+.waypoints-section__content {
+    padding: 0.25rem 0.5rem 0.5rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+/* ----- INSTRUCTION ROW ----- */
+.waypoints-instruction {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.35rem;
+    border-radius: 0.4rem;
+    background: rgba(248, 250, 252, 0.5);
+    transition: background 0.15s ease;
+}
+
+.waypoints-instruction:hover {
+    background: rgba(99, 102, 241, 0.05);
+}
+
+.waypoints-instruction__index {
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: #94a3b8;
+    min-width: 14px;
+    text-align: center;
+}
+
+.waypoints-instruction__type {
+    font-size: 0.55rem;
+    font-weight: 700;
+    padding: 0.12rem 0.25rem;
+    border-radius: 0.25rem;
+    min-width: 28px;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.waypoints-instruction__type--turn {
+    background: rgba(234, 179, 8, 0.15);
+    color: #a16207;
+}
+
+.waypoints-instruction__type--move {
+    background: rgba(34, 197, 94, 0.15);
+    color: #15803d;
+}
+
+.waypoints-instruction__type--reverse {
+    background: rgba(239, 68, 68, 0.15);
+    color: #dc2626;
+}
+
+.waypoints-instruction__type--unknown {
+    background: rgba(148, 163, 184, 0.15);
+    color: #64748b;
+}
+
+.waypoints-instruction__direction {
+    font-size: 0.6rem;
+    font-weight: 500;
+    color: #64748b;
+    min-width: 24px;
+}
+
+.waypoints-instruction__value {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #1e293b;
+    min-width: 36px;
+    text-align: right;
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+.waypoints-instruction__unit {
+    font-size: 0.6rem;
+    font-weight: 500;
+    color: #94a3b8;
+    min-width: 16px;
+}
+
+/* ----- RESPONSIVE ----- */
+@media (max-width: 1199px) {
+    .waypoints-panel {
+        min-width: 260px;
+        max-width: 300px;
+    }
+
+    .waypoints-panel__header {
+        padding: 0.6rem 0.75rem;
+    }
+
+    .waypoints-panel__title {
+        font-size: 0.9rem;
+    }
+
+    .waypoints-panel__content {
+        padding: 0.5rem;
+        gap: 0.4rem;
+    }
+}
+
+@media (max-width: 899px) {
+    .waypoints-panel {
+        min-width: 240px;
+        max-width: 280px;
+    }
+
+    .waypoints-panel__header {
+        padding: 0.5rem 0.6rem;
+    }
+
+    .waypoints-panel__title {
+        font-size: 0.85rem;
+    }
+
+    .waypoints-section__name {
+        font-size: 0.8rem;
+    }
+}
+
+/* ----- SCROLLBAR ----- */
+.waypoints-panel__content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.waypoints-panel__content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.waypoints-panel__content::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.3);
+    border-radius: 3px;
+}
+
+.waypoints-panel__content::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.5);
+}
