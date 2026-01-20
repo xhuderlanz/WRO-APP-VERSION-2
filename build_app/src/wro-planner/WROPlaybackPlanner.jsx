@@ -153,11 +153,10 @@ export default function WROPlaybackPlanner() {
     const [showShortcuts, setShowShortcuts] = useState(false);
 
     // =========================================================================
-    // STATE - Interactive Obstacles
+    // OBSTACLE STATE
     // =========================================================================
     const [obstacles, setObstacles] = useState([]);
     const [selectedObstacleId, setSelectedObstacleId] = useState(null);
-    const [preventCollisions, setPreventCollisions] = useState(true);
     const [collisionPadding, setCollisionPadding] = useState(5); // Default 5cm padding
 
     // =========================================================================
@@ -702,46 +701,6 @@ export default function WROPlaybackPlanner() {
         }
     }, [selectedNode, isRunning, stopPlayback, initialPose, unitToPx, pxToUnit]);
 
-    // =========================================================================
-    // HANDLERS - Obstacle Management
-    // =========================================================================
-
-    /**
-     * Add a default 20x20cm obstacle at canvas center
-     */
-    const handleAddObstacle = useCallback(() => {
-        const sizePx = unitToPx(20); // 20cm default size
-        const newObstacle = {
-            id: uid('obs'),
-            x: canvasBaseSize.width / 2,
-            y: canvasBaseSize.height / 2,
-            w: sizePx,
-            h: sizePx,
-            color: '#f97316', // orange-500
-            rotation: 0
-        };
-        setObstacles(prev => [...prev, newObstacle]);
-        setSelectedObstacleId(newObstacle.id);
-    }, [canvasBaseSize, unitToPx]);
-
-    /**
-     * Update obstacle properties (position, size, etc.)
-     */
-    const handleUpdateObstacle = useCallback((id, newProps) => {
-        setObstacles(prev => prev.map(obs =>
-            obs.id === id ? { ...obs, ...newProps } : obs
-        ));
-    }, []);
-
-    /**
-     * Delete the currently selected obstacle
-     */
-    const handleDeleteObstacle = useCallback(() => {
-        if (!selectedObstacleId) return;
-        setObstacles(prev => prev.filter(obs => obs.id !== selectedObstacleId));
-        setSelectedObstacleId(null);
-    }, [selectedObstacleId]);
-
     const handleBgUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -839,6 +798,50 @@ export default function WROPlaybackPlanner() {
         })));
         setUnit(nextUnit);
     };
+
+    // =========================================================================
+    // HANDLERS - Obstacles
+    // =========================================================================
+
+    // Add a default 20x20cm obstacle at canvas center
+    const handleAddObstacle = useCallback(() => {
+        const sizePx = unitToPx(20) || 100; // 20cm default size or 100px fallback
+        const newObstacle = {
+            id: uid('obs'),
+            x: canvasBaseSize.width / 2,
+            y: canvasBaseSize.height / 2,
+            w: sizePx,
+            h: sizePx,
+            color: '#f97316', // orange-500
+            rotation: 0
+        };
+        setObstacles(prev => [...prev, newObstacle]);
+        setSelectedObstacleId(newObstacle.id);
+    }, [canvasBaseSize, unitToPx]);
+
+    // Update obstacle properties
+    const handleUpdateObstacle = useCallback((id, newProps) => {
+        setObstacles(prev => prev.map(obs =>
+            obs.id === id ? { ...obs, ...newProps } : obs
+        ));
+    }, []);
+
+    // Delete selected obstacle
+    const handleDeleteObstacle = useCallback(() => {
+        if (!selectedObstacleId) return;
+        setObstacles(prev => prev.filter(obs => obs.id !== selectedObstacleId));
+        setSelectedObstacleId(null);
+    }, [selectedObstacleId]);
+
+    // Select obstacle
+    const handleSelectObstacle = useCallback((id) => {
+        setSelectedObstacleId(id);
+        if (id) {
+            setSelectedNode(null); // Deselect waypoint if obstacle selected
+            setSelectedSectionId(null);
+        }
+    }, [setSelectedNode, setSelectedSectionId]);
+
 
     // =========================================================================
     // RENDER
@@ -946,6 +949,15 @@ export default function WROPlaybackPlanner() {
                             dragging={dragging}
                             setDragging={setDragging}
                             hoverNode={hoverNode}
+                            // Obstacles
+                            obstacles={obstacles}
+                            onUpdateObstacle={handleUpdateObstacle}
+                            selectedObstacleId={selectedObstacleId}
+                            onSelectObstacle={handleSelectObstacle}
+                            onDeleteObstacle={handleDeleteObstacle}
+                            collisionPadding={collisionPadding}
+
+                            // Other props
                             setHoverNode={setHoverNode}
                             draggingStart={draggingStart}
                             setDraggingStart={setDraggingStart}
@@ -983,14 +995,6 @@ export default function WROPlaybackPlanner() {
                             setSelectedNode={setSelectedNode}
                             // Toggle reverse handler (respects selectedNode)
                             onToggleReverse={handleToggleReverse}
-                            // Obstacle props
-                            obstacles={obstacles}
-                            selectedObstacleId={selectedObstacleId}
-                            onSelectObstacle={setSelectedObstacleId}
-                            onUpdateObstacle={handleUpdateObstacle}
-                            onDeleteObstacle={handleDeleteObstacle}
-                            preventCollisions={preventCollisions}
-                            collisionPadding={collisionPadding}
                         />
                     </div>
 
@@ -1052,10 +1056,6 @@ export default function WROPlaybackPlanner() {
                 setGhostRobotOpacity={setGhostRobotOpacity}
                 robotImageRotation={robotImageRotation}
                 setRobotImageRotation={setRobotImageRotation}
-                preventCollisions={preventCollisions}
-                setPreventCollisions={setPreventCollisions}
-                collisionPadding={collisionPadding}
-                setCollisionPadding={setCollisionPadding}
             />
 
             {/* Robot Size Configuration Modal */}

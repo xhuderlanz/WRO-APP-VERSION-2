@@ -17,7 +17,6 @@ const OptionsPanel = ({
     ghostRobotOpacity, setGhostRobotOpacity,
     robotImageRotation, setRobotImageRotation,
     preventCollisions, setPreventCollisions,
-    collisionPadding, setCollisionPadding,
 }) => {
     const isMM = unit === 'mm';
     const sizeMin = isMM ? 1 : 0.1;
@@ -159,32 +158,6 @@ const OptionsPanel = ({
                                 </div>
                                 <span className="option-field__hint">Impide añadir puntos que atraviesen obstáculos.</span>
                             </div>
-
-                            {preventCollisions && (
-                                <div className="option-field" style={{ marginTop: '1rem' }}>
-                                    <span className="option-field__label">Margen de colisión ({unit})</span>
-                                    <div className="option-field__controls">
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max="50"
-                                            step={isMM ? 1 : 0.5}
-                                            value={collisionPadding}
-                                            onChange={e => setCollisionPadding(Math.max(0, parseFloat(e.target.value) || 0))}
-                                            style={{
-                                                width: '100%',
-                                                padding: '0.5rem',
-                                                border: '1px solid #cbd5e1',
-                                                borderRadius: '0.375rem',
-                                                fontSize: '0.875rem'
-                                            }}
-                                        />
-                                    </div>
-                                    <span className="option-field__hint">
-                                        Distancia extra de seguridad alrededor de los obstáculos (zona roja).
-                                    </span>
-                                </div>
-                            )}
                             <div className="option-divider" />
                             <div className="option-field option-field--range">
                                 <div className="option-field__label">Tamaño de celda</div>

@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useCallback, useState } from "react";
 import { DEG2RAD, RAD2DEG, SNAP_45_BASE_ANGLES } from "./domain/constants";
 import { normalizeAngle, getReferencePoint, getLastPoseOfSection, projectPointWithReference, computePoseUpToSection } from "./domain/geometry";
 import { recalcAfterEditStable as recalcAllFollowingSections, recalcSectionFromPointsStable as recalcSectionFromPoints, recalcSectionsFromPointsStable } from "./domain/sections_stable";
-import { checkIntersection, isPointInside, checkPathCollision } from "./domain/collision";
+import { checkIntersection, isPointInside, checkPathCollision, checkRotationCollision } from "./domain/collision";
 
 const CanvasBoard = ({
     fieldKey,
@@ -772,6 +772,25 @@ const CanvasBoard = ({
                 ctx.setLineDash([]);
             }
             drawRobot(ctx, ghost, true);
+
+            // Draw Rotation Collision Circle
+            if (ghost.isInvalid && ghost.collisionType === 'rotation') {
+                const rWidth = unitToPx(robot.width) / 2;
+                const rLength = unitToPx(robot.length) / 2;
+                const radius = Math.hypot(rWidth, rLength);
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(ghost.x, ghost.y, radius, 0, Math.PI * 2);
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.1)';
+                ctx.fill();
+                ctx.setLineDash([]);
+                ctx.restore();
+            }
         }
 
         // Robot
@@ -1072,7 +1091,16 @@ const CanvasBoard = ({
                 // COLLISION CHECK
                 if (preventCollisions) {
                     const paddingPx = unitToPx(collisionPadding);
-                    // Check if point itself is inside an *inflated* obstacle
+                    const widthPx = unitToPx(robot.width);
+                    const lengthPx = unitToPx(robot.length);
+                    const robotPx = { width: widthPx, length: lengthPx };
+
+                    // 1. Rotation Check at New Point
+                    // Calculate distance to obstacles. If < radius, block.
+                    if (checkRotationCollision(newPoint, obstacles, robotPx, paddingPx)) return;
+
+                    // 2. Path Check (Previous -> New)
+                    // Check if point itself is inside an *inflated* obstacle (covered by rotation check mostly, but path check covers edges)
                     // Use checkIntersection for a 0-length segment to trigger point-inside check with padding
                     const obsHit = checkIntersection(newPoint, newPoint, obstacles, paddingPx);
                     if (obsHit) return;
@@ -1236,10 +1264,26 @@ const CanvasBoard = ({
 
             // Determine if this moving ghost is invalid (Collision)
             let isInvalid = false;
+            let collisionType = null; // 'path' or 'rotation'
             if (preventCollisions) {
-                // Check collision from anchor to new center using Triple Line Logic + Padding
-                if (checkPathCollision(anchorPose, projection.center, unitToPx(robot.width), obstacles, unitToPx(collisionPadding))) {
+                const paddingPx = unitToPx(collisionPadding);
+                const widthPx = unitToPx(robot.width);
+                const lengthPx = unitToPx(robot.length);
+                const robotPx = { width: widthPx, length: lengthPx };
+
+                // 1. Check Path Collision (Triple Line)
+                if (checkPathCollision(anchorPose, projection.center, widthPx, obstacles, paddingPx)) {
                     isInvalid = true;
+                    collisionType = 'path';
+                }
+
+                // 2. Check Rotation Collision (Circle at Target)
+                // Only check if path is clear (or can check both)
+                if (!isInvalid) {
+                    if (checkRotationCollision(projection.center, obstacles, robotPx, paddingPx)) {
+                        isInvalid = true;
+                        collisionType = 'rotation';
+                    }
                 }
             }
 
@@ -1253,7 +1297,9 @@ const CanvasBoard = ({
                 originX: anchorPose.x,
                 originY: anchorPose.y,
                 active: true,
+                active: true,
                 isInvalid: isInvalid, // Visual feedback prop
+                collisionType: collisionType,
             });
 
             if (activeSession) {
@@ -1274,7 +1320,13 @@ const CanvasBoard = ({
 
                     // COLLISION CHECK
                     if (preventCollisions) {
-                        if (checkPathCollision(anchorPose, centerPoint, unitToPx(robot.width), obstacles, unitToPx(collisionPadding))) {
+                        const paddingPx = unitToPx(collisionPadding);
+                        const widthPx = unitToPx(robot.width);
+                        const lengthPx = unitToPx(robot.length);
+                        const robotPx = { width: widthPx, length: lengthPx };
+
+                        if (checkPathCollision(anchorPose, centerPoint, widthPx, obstacles, paddingPx) ||
+                            checkRotationCollision(centerPoint, obstacles, robotPx, paddingPx)) {
                             return;
                         }
                     }
@@ -1358,7 +1410,13 @@ const CanvasBoard = ({
 
         // COLLISION CHECK
         if (preventCollisions) {
-            if (checkPathCollision(basePose, centerPoint, unitToPx(robot.width), obstacles, unitToPx(collisionPadding))) {
+            const paddingPx = unitToPx(collisionPadding);
+            const widthPx = unitToPx(robot.width);
+            const lengthPx = unitToPx(robot.length);
+            const robotPx = { width: widthPx, length: lengthPx };
+
+            if (checkPathCollision(basePose, centerPoint, widthPx, obstacles, paddingPx) ||
+                checkRotationCollision(centerPoint, obstacles, robotPx, paddingPx)) {
                 return;
             }
         }
