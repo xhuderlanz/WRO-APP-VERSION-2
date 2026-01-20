@@ -2,7 +2,23 @@ import React, { useEffect } from "react";
 import { IconTarget } from "./icons";
 import { FIELD_PRESETS, DEG2RAD, RAD2DEG } from "./domain/constants";
 
-const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOpacity, setBgOpacity, grid, setGrid, robot, setRobot, initialPose, setInitialPose, handleBgUpload, handleRobotImageUpload, setIsSettingOrigin, unit, onToggleUnit, cursorGuideColor, setCursorGuideColor, cursorGuideLineWidth, setCursorGuideLineWidth, ghostRobotOpacity, setGhostRobotOpacity, robotImageRotation, setRobotImageRotation }) => {
+const OptionsPanel = ({
+    showOptions, setShowOptions,
+    fieldKey, setFieldKey,
+    bgOpacity, setBgOpacity,
+    grid, setGrid,
+    robot, setRobot,
+    initialPose, setInitialPose,
+    handleBgUpload, handleRobotImageUpload,
+    setIsSettingOrigin,
+    unit, onToggleUnit,
+    cursorGuideColor, setCursorGuideColor,
+    cursorGuideLineWidth, setCursorGuideLineWidth,
+    ghostRobotOpacity, setGhostRobotOpacity,
+    robotImageRotation, setRobotImageRotation,
+    preventCollisions, setPreventCollisions,
+    collisionPadding, setCollisionPadding,
+}) => {
     const isMM = unit === 'mm';
     const sizeMin = isMM ? 1 : 0.1;
     const sizeMax = isMM ? 50 : 5;
@@ -125,6 +141,50 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                     <span className="option-field__hint">Pulsa sobre el tapete para definir dónde se ubica (0, 0).</span>
                                 </div>
                             </div>
+                            <div className="option-field">
+                                <span className="option-field__label">Seguridad</span>
+                                <div className="option-field__controls option-field__controls--single">
+                                    <button
+                                        type="button"
+                                        className="option-chip-button"
+                                        onClick={() => setPreventCollisions(!preventCollisions)}
+                                        style={{
+                                            backgroundColor: preventCollisions ? '#06b6d4' : '#e2e8f0',
+                                            color: preventCollisions ? '#fff' : '#64748b',
+                                            fontWeight: 600
+                                        }}
+                                    >
+                                        {preventCollisions ? 'Prevenir colisiones: ON' : 'Prevenir colisiones: OFF'}
+                                    </button>
+                                </div>
+                                <span className="option-field__hint">Impide añadir puntos que atraviesen obstáculos.</span>
+                            </div>
+
+                            {preventCollisions && (
+                                <div className="option-field" style={{ marginTop: '1rem' }}>
+                                    <span className="option-field__label">Margen de colisión ({unit})</span>
+                                    <div className="option-field__controls">
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="50"
+                                            step={isMM ? 1 : 0.5}
+                                            value={collisionPadding}
+                                            onChange={e => setCollisionPadding(Math.max(0, parseFloat(e.target.value) || 0))}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.5rem',
+                                                border: '1px solid #cbd5e1',
+                                                borderRadius: '0.375rem',
+                                                fontSize: '0.875rem'
+                                            }}
+                                        />
+                                    </div>
+                                    <span className="option-field__hint">
+                                        Distancia extra de seguridad alrededor de los obstáculos (zona roja).
+                                    </span>
+                                </div>
+                            )}
                             <div className="option-divider" />
                             <div className="option-field option-field--range">
                                 <div className="option-field__label">Tamaño de celda</div>

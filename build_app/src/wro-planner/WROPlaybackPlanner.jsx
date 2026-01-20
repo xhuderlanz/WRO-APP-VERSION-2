@@ -157,6 +157,8 @@ export default function WROPlaybackPlanner() {
     // =========================================================================
     const [obstacles, setObstacles] = useState([]);
     const [selectedObstacleId, setSelectedObstacleId] = useState(null);
+    const [preventCollisions, setPreventCollisions] = useState(true);
+    const [collisionPadding, setCollisionPadding] = useState(5); // Default 5cm padding
 
     // =========================================================================
     // REFS
@@ -987,6 +989,8 @@ export default function WROPlaybackPlanner() {
                             onSelectObstacle={setSelectedObstacleId}
                             onUpdateObstacle={handleUpdateObstacle}
                             onDeleteObstacle={handleDeleteObstacle}
+                            preventCollisions={preventCollisions}
+                            collisionPadding={collisionPadding}
                         />
                     </div>
 
@@ -1048,6 +1052,10 @@ export default function WROPlaybackPlanner() {
                 setGhostRobotOpacity={setGhostRobotOpacity}
                 robotImageRotation={robotImageRotation}
                 setRobotImageRotation={setRobotImageRotation}
+                preventCollisions={preventCollisions}
+                setPreventCollisions={setPreventCollisions}
+                collisionPadding={collisionPadding}
+                setCollisionPadding={setCollisionPadding}
             />
 
             {/* Robot Size Configuration Modal */}

@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useCallback, useState } from "react";
 import { DEG2RAD, RAD2DEG, SNAP_45_BASE_ANGLES } from "./domain/constants";
 import { normalizeAngle, getReferencePoint, getLastPoseOfSection, projectPointWithReference, computePoseUpToSection } from "./domain/geometry";
 import { recalcAfterEditStable as recalcAllFollowingSections, recalcSectionFromPointsStable as recalcSectionFromPoints, recalcSectionsFromPointsStable } from "./domain/sections_stable";
+import { checkIntersection, isPointInside, checkPathCollision } from "./domain/collision";
 
 const CanvasBoard = ({
     fieldKey,
@@ -79,6 +80,8 @@ const CanvasBoard = ({
     onSelectObstacle,
     onUpdateObstacle,
     onDeleteObstacle,
+    collisionPadding = 5,
+    preventCollisions,
 }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -326,7 +329,11 @@ const CanvasBoard = ({
             ctx.globalAlpha = 1; // Reset alpha
         } else {
             ctx.globalAlpha = isGhost ? ghostOpacity : (robot.opacity ?? 1);
-            ctx.fillStyle = isGhost ? `${robot.color}66` : robot.color;
+            if (pose.isInvalid) {
+                ctx.fillStyle = isGhost ? '#ef444466' : '#ef4444'; // Red for invalid
+            } else {
+                ctx.fillStyle = isGhost ? `${robot.color}66` : robot.color;
+            }
 
             const wheelOffsetVal = robot.wheelOffset !== undefined ? robot.wheelOffset : (robot.length / 2);
             const wheelOffsetPx = unitToPx(wheelOffsetVal);
@@ -590,6 +597,24 @@ const CanvasBoard = ({
             ctx.save();
             ctx.translate(obs.x, obs.y);
             ctx.rotate((obs.rotation || 0) * DEG2RAD);
+
+            // Draw Padded Boundary (Safety Margin)
+            if (preventCollisions && collisionPadding > 0) {
+                const paddingPx = unitToPx(collisionPadding);
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                // Rect is centered, so from -w/2-p to w/2+p
+                // w starts at -w/2. width is w. 
+                // strokeRect(x,y,w,h)
+                ctx.strokeRect(
+                    (-obs.w / 2) - paddingPx,
+                    (-obs.h / 2) - paddingPx,
+                    obs.w + paddingPx * 2,
+                    obs.h + paddingPx * 2
+                );
+                ctx.setLineDash([]);
+            }
 
             // Obstacle body
             ctx.fillStyle = obs.color || '#f97316';
@@ -1044,6 +1069,27 @@ const CanvasBoard = ({
                     heading: undefined // Allow auto-calculation based on segment
                 };
 
+                // COLLISION CHECK
+                if (preventCollisions) {
+                    const paddingPx = unitToPx(collisionPadding);
+                    // Check if point itself is inside an *inflated* obstacle
+                    // Use checkIntersection for a 0-length segment to trigger point-inside check with padding
+                    const obsHit = checkIntersection(newPoint, newPoint, obstacles, paddingPx);
+                    if (obsHit) return;
+
+                    const width = unitToPx(robot.width);
+
+                    // Check intersection with PREVIOUS point
+                    const prevP = prevPoint;
+                    if (checkPathCollision(prevP, newPoint, width, obstacles, paddingPx)) return;
+
+                    // Check intersection with NEXT point
+                    if (index + 1 < currentSection.points.length) {
+                        const nextP = currentSection.points[index + 1];
+                        if (checkPathCollision(newPoint, nextP, width, obstacles, paddingPx)) return;
+                    }
+                }
+
                 setSections(prev => {
                     const modified = prev.map(s => {
                         if (s.id !== currentSection.id) return s;
@@ -1188,6 +1234,15 @@ const CanvasBoard = ({
             const projection = projectPointWithReference({ rawPoint: p, anchorPose, reference: segmentReference, reverse: reverseDrawing, halfRobotLengthPx: unitToPx(robot.wheelOffset ?? robot.length / 2), snap45, baseAngles: SNAP_45_BASE_ANGLES });
             const previewPose = { x: projection.center.x, y: projection.center.y, theta: projection.theta };
 
+            // Determine if this moving ghost is invalid (Collision)
+            let isInvalid = false;
+            if (preventCollisions) {
+                // Check collision from anchor to new center using Triple Line Logic + Padding
+                if (checkPathCollision(anchorPose, projection.center, unitToPx(robot.width), obstacles, unitToPx(collisionPadding))) {
+                    isInvalid = true;
+                }
+            }
+
             setGhost({
                 x: previewPose.x,
                 y: previewPose.y,
@@ -1198,6 +1253,7 @@ const CanvasBoard = ({
                 originX: anchorPose.x,
                 originY: anchorPose.y,
                 active: true,
+                isInvalid: isInvalid, // Visual feedback prop
             });
 
             if (activeSession) {
@@ -1205,10 +1261,24 @@ const CanvasBoard = ({
                 if (dist >= DRAW_STEP_MIN_PX) {
                     const now = Date.now();
                     const last = drawThrottleRef.current.lastAutoAddTs;
+
+                    // Block auto-add if collision detected
+                    if (preventCollisions && isInvalid) {
+                        return;
+                    }
+
                     if (now - last < DRAW_AUTO_INTERVAL_MS) {
                         return;
                     }
                     const centerPoint = projection.center;
+
+                    // COLLISION CHECK
+                    if (preventCollisions) {
+                        if (checkPathCollision(anchorPose, centerPoint, unitToPx(robot.width), obstacles, unitToPx(collisionPadding))) {
+                            return;
+                        }
+                    }
+
                     setSections(prev => {
                         const modified = prev.map(s => {
                             if (s.id !== currentSection.id) return s;
@@ -1285,6 +1355,14 @@ const CanvasBoard = ({
         const segmentReference = referenceMode;
         const projection = projectPointWithReference({ rawPoint: p, anchorPose: basePose, reference: segmentReference, reverse: reverseDrawing, halfRobotLengthPx: unitToPx(robot.wheelOffset ?? robot.length / 2), snap45, baseAngles: SNAP_45_BASE_ANGLES });
         const centerPoint = projection.center;
+
+        // COLLISION CHECK
+        if (preventCollisions) {
+            if (checkPathCollision(basePose, centerPoint, unitToPx(robot.width), obstacles, unitToPx(collisionPadding))) {
+                return;
+            }
+        }
+
         setSections(prev => {
             const modified = prev.map(s => {
                 if (s.id !== currentSection.id) return s;
