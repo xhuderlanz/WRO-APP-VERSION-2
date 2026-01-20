@@ -68,6 +68,11 @@ const CanvasBoard = ({
     setPan,
     // NEW: Pre-calculated path segments from parent (stateless architecture)
     calculatedPathSegments = [],
+    // NEW: Selected node for editing waypoint properties
+    selectedNode = null,
+    setSelectedNode,
+    // NEW: Toggle reverse handler from parent (respects selectedNode)
+    onToggleReverse,
 }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -82,6 +87,12 @@ const CanvasBoard = ({
 
     // Keyboard handler
     const handleKeyDown = useCallback((e) => {
+        // Safety: Ignore if typing in an input field
+        const tag = e.target.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) {
+            return;
+        }
+
         // Tab: Toggle draw/edit mode
         if (e.key === 'Tab' && !e.repeat) {
             e.preventDefault();
@@ -137,15 +148,50 @@ const CanvasBoard = ({
             return;
         }
 
-        // Space: Toggle reverse drawing
+        // Escape: Deselect selected node
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            if (setSelectedNode) {
+                setSelectedNode(null);
+            }
+            setDragging({ active: false, sectionId: null, index: -1 });
+            return;
+        }
+
+        // Space: Toggle reverse direction (uses parent handler that respects selectedNode)
         if (e.code === 'Space' && !e.repeat) {
             e.preventDefault();
-            setReverseDrawing(prev => !prev);
+            if (onToggleReverse) {
+                onToggleReverse();
+            } else {
+                // Fallback if handler not provided
+                setReverseDrawing(prev => !prev);
+            }
+            return;
         }
+
         // Delete point
         if ((e.key === 'Delete' || e.key === 'Backspace') && !isRunning) {
-            // Check if a point is selected (dragging.sectionId is set)
+            // Check if a node is selected via selectedNode state
+            if (selectedNode && selectedNode.sectionId && selectedNode.index >= 0) {
+                e.preventDefault();
+                setSections(prev => {
+                    const modified = prev.map(s => {
+                        if (s.id !== selectedNode.sectionId) return s;
+                        const newPts = s.points.filter((_, i) => i !== selectedNode.index);
+                        return { ...s, points: newPts };
+                    });
+                    return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
+                });
+                if (setSelectedNode) {
+                    setSelectedNode(null);
+                }
+                setDragging({ active: false, sectionId: null, index: -1 });
+                return;
+            }
+            // Fallback: check if a point is selected via dragging state
             if (dragging.sectionId && dragging.index > -1) {
+                e.preventDefault();
                 setSections(prev => {
                     const modified = prev.map(s => {
                         if (s.id !== dragging.sectionId) return s;
@@ -157,7 +203,7 @@ const CanvasBoard = ({
                 setDragging({ active: false, sectionId: null, index: -1 });
             }
         }
-    }, [dragging, isRunning, sections, selectedSectionId, initialPose, setDrawMode, setSnap45, addSection, setSelectedSectionId, setReferenceMode, setReverseDrawing, setGhostOpacityOverride, setSections, setDragging, pxToUnit, unitToPx]);
+    }, [dragging, isRunning, sections, selectedSectionId, initialPose, setDrawMode, setSnap45, addSection, setSelectedSectionId, setReferenceMode, setReverseDrawing, setGhostOpacityOverride, setSections, setDragging, pxToUnit, unitToPx, selectedNode, setSelectedNode, onToggleReverse]);
 
     const handleKeyUp = useCallback((e) => {
         if (e.code === 'Space') {
@@ -546,19 +592,52 @@ const CanvasBoard = ({
             // Nodes
             if ((selectedSectionId === s.id && drawMode) || !drawMode) {
                 s.points.forEach((p, i) => {
-                    ctx.beginPath();
                     const isSelected = dragging.sectionId === s.id && dragging.index === i;
                     const isHovered = hoverNode.sectionId === s.id && hoverNode.index === i;
+                    const isNodeSelected = selectedNode && selectedNode.sectionId === s.id && selectedNode.index === i;
                     const isActive = isSelected || isHovered;
                     const isLastActive = drawMode && selectedSectionId === s.id && i === s.points.length - 1;
 
-                    const radius = (isActive || isLastActive) ? 6 : 4;
+                    // Draw glow effect for selected node
+                    if (isNodeSelected) {
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
+                        ctx.fillStyle = 'rgba(6, 182, 212, 0.3)'; // cyan glow
+                        ctx.fill();
+                        ctx.strokeStyle = '#06b6d4'; // cyan-500
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+
+                    // Draw main node
+                    ctx.beginPath();
+                    const radius = (isActive || isLastActive || isNodeSelected) ? 6 : 4;
                     ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-                    ctx.fillStyle = (isActive || isLastActive) ? '#fff' : s.color;
+
+                    // Color based on reverse property and selection
+                    if (isNodeSelected) {
+                        ctx.fillStyle = p.reverse ? '#ef4444' : '#22c55e'; // red for reverse, green for forward
+                    } else if (isActive || isLastActive) {
+                        ctx.fillStyle = '#fff';
+                    } else {
+                        ctx.fillStyle = s.color;
+                    }
                     ctx.fill();
-                    ctx.strokeStyle = (isActive || isLastActive) ? s.color : '#000';
-                    ctx.lineWidth = (isActive || isLastActive) ? 2 : 1;
+
+                    ctx.strokeStyle = isNodeSelected ? '#06b6d4' : ((isActive || isLastActive) ? s.color : '#000');
+                    ctx.lineWidth = (isActive || isLastActive || isNodeSelected) ? 2 : 1;
                     ctx.stroke();
+
+                    // Draw direction indicator for selected node
+                    if (isNodeSelected) {
+                        ctx.save();
+                        ctx.font = 'bold 8px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillStyle = p.reverse ? '#ef4444' : '#22c55e';
+                        ctx.fillText(p.reverse ? 'R' : 'F', p.x, p.y + 18);
+                        ctx.restore();
+                    }
 
                     // Draw point order number
                     ctx.save();
@@ -695,7 +774,7 @@ const CanvasBoard = ({
             ctx.restore();
         }
 
-    }, [bgImage, bgOpacity, grid, unitToPx, sections, selectedSectionId, drawMode, hoverNode, ghost, isRunning, playPose, robot, robotImgObj, actionCursorRef, initialPose, drawRobot, rulerActive, rulerPoints, pxToUnit, unit, cursorGuide, calculatedPathSegments, dragging, cursorGuideColor, cursorGuideLineWidth]);
+    }, [bgImage, bgOpacity, grid, unitToPx, sections, selectedSectionId, drawMode, hoverNode, ghost, isRunning, playPose, robot, robotImgObj, actionCursorRef, initialPose, drawRobot, rulerActive, rulerPoints, pxToUnit, unit, cursorGuide, calculatedPathSegments, dragging, cursorGuideColor, cursorGuideLineWidth, selectedNode]);
 
     useEffect(() => {
         const cvs = canvasRef.current;
@@ -839,48 +918,65 @@ const CanvasBoard = ({
                 return;
             }
 
-            // 2. Check if clicking on existing point (Select/Drag)
-            if (currentSection) {
-                const idx = hitTestNode(currentSection.points, p, 8);
+            // 2. Check if clicking on existing point (Select for editing or drag)
+            // First, check ALL sections for node hits, not just current section
+            for (const section of sections) {
+                if (!section.isVisible) continue;
+                const idx = hitTestNode(section.points, p, 10);
                 if (idx > -1) {
-                    setDragging({ active: true, sectionId: currentSection.id, index: idx });
+                    // Set as selected node for editing
+                    if (setSelectedNode) {
+                        setSelectedNode({ sectionId: section.id, index: idx });
+                    }
+                    // Also set as dragging if it's the current section
+                    if (section.id === currentSection?.id) {
+                        setDragging({ active: true, sectionId: section.id, index: idx });
+                    } else {
+                        // Switch to that section
+                        setSelectedSectionId(section.id);
+                    }
                     return;
                 }
-
-                // 3. Check if clicking on a segment (Insert Point)
-                const startPose = computePoseUpToSection(sections, initialPose, currentSection.id, unitToPx);
-                const hitSegment = hitTestSegment(startPose, currentSection.points, p, 8);
-                if (hitSegment) {
-                    const { index, point } = hitSegment;
-                    // Insert point at index + 1
-                    // If index is -1, insert at 0
-                    const prevPoint = index === -1 ? { ...startPose, reference: 'center', reverse: false } : currentSection.points[index];
-                    const newPoint = {
-                        x: point.x,
-                        y: point.y,
-                        reverse: prevPoint.reverse,
-                        reference: prevPoint.reference,
-                        heading: undefined // Allow auto-calculation based on segment
-                    };
-
-                    setSections(prev => {
-                        const modified = prev.map(s => {
-                            if (s.id !== currentSection.id) return s;
-                            const newPts = [...s.points];
-                            newPts.splice(index + 1, 0, newPoint);
-                            return { ...s, points: newPts };
-                        });
-                        return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
-                    });
-
-                    // Select the newly created point
-                    setDragging({ active: true, sectionId: currentSection.id, index: index + 1 });
-                    return;
-                }
-
-                // If clicked on empty space, deselect
-                setDragging({ active: false, sectionId: null, index: -1 });
             }
+
+            // 3. Click on empty area - deselect any selected node
+            if (setSelectedNode) {
+                setSelectedNode(null);
+            }
+
+            // 4. Check if clicking on a segment (Insert Point) - only for current section
+            const startPose = computePoseUpToSection(sections, initialPose, currentSection.id, unitToPx);
+            const hitSegment = hitTestSegment(startPose, currentSection.points, p, 8);
+            if (hitSegment) {
+                const { index, point } = hitSegment;
+                // Insert point at index + 1
+                // If index is -1, insert at 0
+                const prevPoint = index === -1 ? { ...startPose, reference: 'center', reverse: false } : currentSection.points[index];
+                const newPoint = {
+                    x: point.x,
+                    y: point.y,
+                    reverse: prevPoint.reverse,
+                    reference: prevPoint.reference,
+                    heading: undefined // Allow auto-calculation based on segment
+                };
+
+                setSections(prev => {
+                    const modified = prev.map(s => {
+                        if (s.id !== currentSection.id) return s;
+                        const newPts = [...s.points];
+                        newPts.splice(index + 1, 0, newPoint);
+                        return { ...s, points: newPts };
+                    });
+                    return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
+                });
+
+                // Select the newly created point
+                setDragging({ active: true, sectionId: currentSection.id, index: index + 1 });
+                return;
+            }
+
+            // If clicked on empty space, deselect
+            setDragging({ active: false, sectionId: null, index: -1 });
         }
     };
 

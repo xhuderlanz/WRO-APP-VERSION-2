@@ -26,6 +26,7 @@ import OptionsPanel from "./OptionsPanel";
 import CanvasBoard from "./CanvasBoard";
 import WaypointsPanel from "./WaypointsPanel";
 import RobotSizeModal from "./components/RobotSizeModal";
+import ShortcutsModal from "./ShortcutsModal";
 import { usePlayback } from "./domain/playback";
 import {
     FIELD_PRESETS,
@@ -143,6 +144,13 @@ export default function WROPlaybackPlanner() {
     const [ghostRobotOpacity, setGhostRobotOpacity] = useState(0.4);
     const [ghostOpacityOverride, setGhostOpacityOverride] = useState(false);
     const [robotImageRotation, setRobotImageRotation] = useState(0);
+
+    // Selected node for editing (clicked waypoint in canvas)
+    // Format: { sectionId: string, index: number } or null
+    const [selectedNode, setSelectedNode] = useState(null);
+
+    // Keyboard shortcuts help modal
+    const [showShortcuts, setShowShortcuts] = useState(false);
 
     // =========================================================================
     // REFS
@@ -646,6 +654,46 @@ export default function WROPlaybackPlanner() {
     const handleZoomOut = () => setZoom(z => Math.max(z - ZOOM_LIMITS.step, ZOOM_LIMITS.min));
     const handleZoomReset = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
 
+    /**
+     * Toggle reverse direction for either:
+     * 1. The selected waypoint (if one is selected)
+     * 2. The global reverseDrawing state (for new points)
+     */
+    const handleToggleReverse = useCallback(() => {
+        if (selectedNode && selectedNode.sectionId && selectedNode.index >= 0) {
+            // Toggle the reverse property of the selected waypoint
+            if (isRunning) {
+                stopPlayback();
+            }
+
+            setSections(prevSections => {
+                const modified = prevSections.map(s => {
+                    if (s.id !== selectedNode.sectionId) return s;
+
+                    const newPoints = s.points.map((p, i) => {
+                        if (i !== selectedNode.index) return p;
+                        return { ...p, reverse: !p.reverse };
+                    });
+
+                    return { ...s, points: newPoints };
+                });
+
+                // Recalculate actions after toggling reverse
+                return recalcSectionsFromPointsStable({
+                    sections: modified,
+                    initialPose,
+                    unitToPx,
+                    pxToUnit
+                });
+            });
+
+            console.log('[WROPlaybackPlanner] Toggled reverse for waypoint:', selectedNode);
+        } else {
+            // No waypoint selected - toggle global reverseDrawing for new points
+            setReverseDrawing(prev => !prev);
+        }
+    }, [selectedNode, isRunning, stopPlayback, initialPose, unitToPx, pxToUnit]);
+
     const handleBgUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -770,7 +818,8 @@ export default function WROPlaybackPlanner() {
                         rulerActive={rulerActive}
                         handleRulerToggle={handleRulerToggle}
                         reverseDrawing={reverseDrawing}
-                        onToggleReverse={() => setReverseDrawing(p => !p)}
+                        onToggleReverse={handleToggleReverse}
+                        selectedNode={selectedNode}
                         referenceMode={referenceMode}
                         onReferenceModeChange={setReferenceMode}
                         zoom={zoom}
@@ -779,6 +828,7 @@ export default function WROPlaybackPlanner() {
                         onZoomReset={handleZoomReset}
                         playbackSpeed={playbackSpeed}
                         setPlaybackSpeed={setPlaybackSpeed}
+                        onOpenShortcuts={() => setShowShortcuts(true)}
                     />
                 </div>
             </header>
@@ -879,6 +929,11 @@ export default function WROPlaybackPlanner() {
                             setPan={setPan}
                             // Pass calculated path segments for optional overlay rendering
                             calculatedPathSegments={routeData.pathSegments}
+                            // Selected node for editing
+                            selectedNode={selectedNode}
+                            setSelectedNode={setSelectedNode}
+                            // Toggle reverse handler (respects selectedNode)
+                            onToggleReverse={handleToggleReverse}
                         />
                     </div>
 
@@ -961,6 +1016,12 @@ export default function WROPlaybackPlanner() {
                     setShowRobotModal(false);
                 }}
                 unit={unit}
+            />
+
+            {/* Keyboard Shortcuts Modal */}
+            <ShortcutsModal
+                isOpen={showShortcuts}
+                onClose={() => setShowShortcuts(false)}
             />
         </div>
     );

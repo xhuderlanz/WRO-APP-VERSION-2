@@ -9,6 +9,7 @@ const TopBar = ({
     pauseResume, stopPlayback, setShowOptions, rulerActive, handleRulerToggle,
     reverseDrawing, onToggleReverse, referenceMode, onReferenceModeChange,
     zoom, onZoomIn, onZoomOut, onZoomReset, playbackSpeed, setPlaybackSpeed,
+    onOpenShortcuts,
 }) => {
     const [quickMenu, setQuickMenu] = useState({ open: false, target: null, anchor: { x: 0, y: 0 } });
     const [hamburgerOpen, setHamburgerOpen] = useState(false);
@@ -292,6 +293,18 @@ const TopBar = ({
                 <button onClick={handleRulerToggle} className={`topbar__chip ${rulerActive ? '' : 'topbar__chip--inactive'}`}>
                     <IconRuler style={{ width: 18, height: 18 }} />
                 </button>
+
+                {/* Keyboard Shortcuts Button */}
+                {onOpenShortcuts && (
+                    <button
+                        onClick={onOpenShortcuts}
+                        className="topbar__chip topbar__chip--inactive"
+                        title="Atajos de teclado"
+                        aria-label="Atajos de teclado"
+                    >
+                        ⌨️
+                    </button>
+                )}
 
                 <button onClick={() => setShowOptions(true)} className="topbar__options-btn">
                     Opciones
