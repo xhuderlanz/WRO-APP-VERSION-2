@@ -144,6 +144,7 @@ export function usePlayback({ initialPose, sections, unitToPx, currentSection, p
         isRunning,
         isPaused,
         playPose,
+        startPlayback,  // ← EXPOSED for direct use with fresh actions
         startMission,
         startMissionReverse,
         startSection,

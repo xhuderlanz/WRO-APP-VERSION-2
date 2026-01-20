@@ -1,8 +1,30 @@
+/**
+ * @fileoverview WROPlaybackPlanner - Main Application Component
+ * 
+ * ARCHITECTURE: Stateless / Rubber-Band
+ * 
+ * This component uses a single source of truth (sections) and derives
+ * all route data using useMemo. When any section is added, deleted, or
+ * modified, the entire route is recalculated from scratch, ensuring:
+ * 
+ * 1. No stale data in playback (via ref-based access)
+ * 2. Deleting middle sections naturally "reconnects" the path
+ * 3. Predictable, testable behavior
+ * 
+ * STALE CLOSURE FIX:
+ * - routeDataRef always holds the latest routeData
+ * - handleStartMission* functions read from this ref
+ * - useEffect auto-stops playback when route changes
+ * 
+ * @module WROPlaybackPlanner
+ */
+
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import TopBar from "./TopBar";
 import SectionsPanel from "./SectionsPanel";
 import OptionsPanel from "./OptionsPanel";
 import CanvasBoard from "./CanvasBoard";
+import WaypointsPanel from "./WaypointsPanel";
 import RobotSizeModal from "./components/RobotSizeModal";
 import { usePlayback } from "./domain/playback";
 import {
@@ -10,7 +32,6 @@ import {
     DEFAULT_GRID,
     DEFAULT_ROBOT,
     ZOOM_LIMITS,
-    SNAP_45_BASE_ANGLES,
     uid,
     MAT_MM,
     DEG2RAD,
@@ -37,12 +58,21 @@ import {
     saveRobotConfig,
     getDefaultRobotConfig
 } from "./domain/robotConfigStorage";
+import {
+    calculateRouteInstructions,
+    generatePlaybackActions as generatePlaybackActionsFromCalc,
+    flattenSectionsToWaypoints
+} from "./domain/pathCalculator";
 
 export default function WROPlaybackPlanner() {
+    // =========================================================================
+    // STATE - Field & Display Settings
+    // =========================================================================
     const [fieldKey, setFieldKey] = useState(FIELD_PRESETS[0].key);
     const [bgImage, setBgImage] = useState(null);
     const [bgOpacity, setBgOpacity] = useState(1);
     const [grid, setGrid] = useState({ ...DEFAULT_GRID });
+
     // Initialize robot state with saved config if available
     const [robot, setRobot] = useState(() => {
         const savedConfig = loadRobotConfig();
@@ -56,24 +86,39 @@ export default function WROPlaybackPlanner() {
         }
         return { ...DEFAULT_ROBOT };
     });
-    const [showRobotModal, setShowRobotModal] = useState(true); // Show on load
+
+    const [showRobotModal, setShowRobotModal] = useState(true);
     const [robotImgObj, setRobotImgObj] = useState(null);
-    const [sections, setSections] = useState([{ id: uid('sec'), name: 'Sección 1', points: [], actions: [], color: DEFAULT_ROBOT.color, isVisible: true }]);
+
+    // =========================================================================
+    // STATE - Sections (PRIMARY DATA SOURCE)
+    // The sections array contains all waypoints grouped by section.
+    // This is the SINGLE SOURCE OF TRUTH for the path.
+    // =========================================================================
+    const [sections, setSections] = useState([{
+        id: uid('sec'),
+        name: 'Sección 1',
+        points: [],
+        actions: [],
+        color: DEFAULT_ROBOT.color,
+        isVisible: true
+    }]);
+
     const [selectedSectionId, setSelectedSectionId] = useState(sections[0].id);
     const [expandedSections, setExpandedSections] = useState([sections[0].id]);
     const [initialPose, setInitialPose] = useState({ x: 120, y: 120, theta: 0 });
+
+    // =========================================================================
+    // STATE - Drawing & Interaction
+    // =========================================================================
     const [drawMode, setDrawMode] = useState(true);
-    const snapGrid = true; // Always enabled
+    const snapGrid = true;
     const [snap45, setSnap45] = useState(false);
     const [ghost, setGhost] = useState({
-        x: 0,
-        y: 0,
-        theta: 0,
+        x: 0, y: 0, theta: 0,
         reference: 'center',
-        displayX: 0,
-        displayY: 0,
-        originX: 0,
-        originY: 0,
+        displayX: 0, displayY: 0,
+        originX: 0, originY: 0,
         active: false,
     });
     const [dragging, setDragging] = useState({ active: false, sectionId: null, index: -1 });
@@ -81,6 +126,7 @@ export default function WROPlaybackPlanner() {
     const [draggingStart, setDraggingStart] = useState(false);
     const [showOptions, setShowOptions] = useState(false);
     const [isSectionsPanelCollapsed, setIsSectionsPanelCollapsed] = useState(false);
+    const [isWaypointsPanelCollapsed, setIsWaypointsPanelCollapsed] = useState(false);
     const [rulerActive, setRulerActive] = useState(false);
     const [rulerPoints, setRulerPoints] = useState({ start: null, end: null });
     const [isSettingOrigin, setIsSettingOrigin] = useState(false);
@@ -94,17 +140,39 @@ export default function WROPlaybackPlanner() {
     const [cursorGuideColor, setCursorGuideColor] = useState('#ff0000ff');
     const [cursorGuideLineWidth, setCursorGuideLineWidth] = useState(4);
     const [playbackSpeed, setPlaybackSpeed] = useState(3);
-    const [ghostRobotOpacity, setGhostRobotOpacity] = useState(0.4); // Configurable opacity for ghost robot
-    const [ghostOpacityOverride, setGhostOpacityOverride] = useState(false); // Toggle for 100% opacity
-    const [robotImageRotation, setRobotImageRotation] = useState(0); // Rotation angle for robot image in degrees
+    const [ghostRobotOpacity, setGhostRobotOpacity] = useState(0.4);
+    const [ghostOpacityOverride, setGhostOpacityOverride] = useState(false);
+    const [robotImageRotation, setRobotImageRotation] = useState(0);
 
+    // =========================================================================
+    // REFS
+    // =========================================================================
     const drawSessionRef = useRef({ active: false, lastPoint: null, addedDuringDrag: false });
     const drawThrottleRef = useRef({ lastAutoAddTs: 0 });
     const rightEraseTimerRef = useRef(null);
     const rightPressActiveRef = useRef(false);
+    const containerRef = useRef(null);
 
-    const currentSection = useMemo(() => sections.find(s => s.id === selectedSectionId), [sections, selectedSectionId]);
+    // REF-BASED ACCESS FOR STALE CLOSURE FIX
+    // This ref ALWAYS holds the latest routeData, preventing stale closures
+    const routeDataRef = useRef({
+        waypoints: [],
+        instructions: [],
+        pathSegments: [],
+        playbackActions: []
+    });
 
+    // =========================================================================
+    // DERIVED STATE - Current Section
+    // =========================================================================
+    const currentSection = useMemo(
+        () => sections.find(s => s.id === selectedSectionId),
+        [sections, selectedSectionId]
+    );
+
+    // =========================================================================
+    // UNIT CONVERSION HELPERS
+    // =========================================================================
     const unitToPx = useCallback((val) => {
         const ppm = (canvasBaseSize.width) / (MAT_MM.w);
         const ppu = unit === 'mm' ? ppm : ppm * 10;
@@ -118,19 +186,261 @@ export default function WROPlaybackPlanner() {
         return px / ppu;
     }, [canvasBaseSize, unit]);
 
+    // Calculate pixelsPerUnit for pathCalculator
+    const pixelsPerUnit = useMemo(() => {
+        const ppm = (canvasBaseSize.width) / (MAT_MM.w);
+        return unit === 'mm' ? ppm : ppm * 10;
+    }, [canvasBaseSize, unit]);
+
+    // =========================================================================
+    // STATELESS ROUTE CALCULATION
+    // 
+    // This useMemo block is the core of the "rubber-band" architecture.
+    // It recalculates EVERYTHING whenever sections change.
+    // =========================================================================
+    const routeData = useMemo(() => {
+        // Flatten sections to waypoints array
+        const waypoints = flattenSectionsToWaypoints(
+            sections.filter(s => s.isVisible)
+        );
+
+        // Skip if no waypoints or invalid pixelsPerUnit
+        if (waypoints.length === 0 || !pixelsPerUnit || pixelsPerUnit <= 0) {
+            return {
+                waypoints: [],
+                instructions: [],
+                pathSegments: [],
+                playbackActions: []
+            };
+        }
+
+        // Calculate route using stateless pathCalculator
+        const { instructions, pathSegments, poses } = calculateRouteInstructions(
+            initialPose,
+            waypoints,
+            pixelsPerUnit
+        );
+
+        // Generate playback actions
+        const playbackActions = generatePlaybackActionsFromCalc(
+            initialPose,
+            waypoints,
+            pixelsPerUnit
+        );
+
+        return {
+            waypoints,
+            instructions,
+            pathSegments,
+            playbackActions,
+            poses
+        };
+    }, [sections, initialPose, pixelsPerUnit]);
+
+    // =========================================================================
+    // SYNC REF WITH LATEST ROUTE DATA (STALE CLOSURE FIX)
+    // This ensures routeDataRef always has the latest data
+    // =========================================================================
+    useEffect(() => {
+        routeDataRef.current = routeData;
+    }, [routeData]);
+
+    // =========================================================================
+    // PLAYBACK HOOK (for animation primitives)
+    // We use startPlayback directly with fresh actions from routeDataRef
+    // =========================================================================
     const {
         isRunning,
         isPaused,
         playPose,
-        startMission,
-        startMissionReverse,
-        startSection,
-        startSectionReverse,
+        startPlayback,  // ← Direct access to start animation with any action list
         pauseResume,
         stopPlayback,
         actionCursorRef
-    } = usePlayback({ initialPose, sections, unitToPx, currentSection, playbackSpeed, unit });
+    } = usePlayback({
+        initialPose,
+        sections,
+        unitToPx,
+        currentSection,
+        playbackSpeed,
+        unit
+    });
 
+    // =========================================================================
+    // AUTO-STOP PLAYBACK WHEN ROUTE CHANGES (STALE DATA PREVENTION)
+    // 
+    // When the path is modified (add/delete/edit), immediately stop any
+    // running playback to prevent the robot from following a "ghost path".
+    // =========================================================================
+    const previousRouteVersionRef = useRef(0);
+    const routeVersion = useMemo(() => {
+        // Generate a simple version hash based on waypoints count and last waypoint
+        const wps = routeData.waypoints;
+        if (wps.length === 0) return 0;
+        const last = wps[wps.length - 1];
+        return wps.length * 10000 + Math.floor((last?.x || 0) + (last?.y || 0));
+    }, [routeData.waypoints]);
+
+    useEffect(() => {
+        // Skip on initial mount
+        if (previousRouteVersionRef.current === 0) {
+            previousRouteVersionRef.current = routeVersion;
+            return;
+        }
+
+        // If route changed and playback is running, stop it
+        if (previousRouteVersionRef.current !== routeVersion && isRunning) {
+            console.log('[WROPlaybackPlanner] Route changed during playback - auto-stopping');
+            stopPlayback();
+        }
+
+        previousRouteVersionRef.current = routeVersion;
+    }, [routeVersion, isRunning, stopPlayback]);
+
+    // =========================================================================
+    // CUSTOM MISSION HANDLERS (USE REF-BASED ACCESS - NO STALE CLOSURES)
+    // 
+    // These use startPlayback directly with fresh actions from routeDataRef.
+    // This guarantees we ALWAYS use the latest calculated playback data.
+    // =========================================================================
+
+    /**
+     * Start full mission playback using the LATEST playback actions.
+     * Reads from routeDataRef to avoid stale closure issues.
+     */
+    const handleStartMission = useCallback(() => {
+        // Always stop any running playback first
+        stopPlayback();
+
+        // Read fresh data from ref (NOT from closure)
+        const latestRouteData = routeDataRef.current;
+        const actions = latestRouteData.playbackActions;
+
+        if (!actions || actions.length === 0) {
+            console.warn('[WROPlaybackPlanner] Cannot start mission: no playback actions');
+            return;
+        }
+
+        console.log('[WROPlaybackPlanner] Starting mission with', actions.length, 'actions');
+
+        // Use startPlayback directly with fresh actions
+        startPlayback(actions, initialPose);
+    }, [stopPlayback, startPlayback, initialPose]);
+
+    /**
+     * Start reverse mission playback.
+     * Reverses the fresh playbackActions from routeDataRef.
+     */
+    const handleStartMissionReverse = useCallback(() => {
+        stopPlayback();
+
+        const latestRouteData = routeDataRef.current;
+        const actions = latestRouteData.playbackActions;
+
+        if (!actions || actions.length === 0) {
+            console.warn('[WROPlaybackPlanner] Cannot start reverse mission: no playback actions');
+            return;
+        }
+
+        // Reverse the actions: negate angles and distances, reverse order
+        const reversedActions = [];
+        for (let i = actions.length - 1; i >= 0; i--) {
+            const action = actions[i];
+            if (action.type === 'rotate') {
+                reversedActions.push({ ...action, angle: -action.angle });
+            } else if (action.type === 'move') {
+                reversedActions.push({ ...action, distance: -action.distance });
+            }
+        }
+
+        // Calculate end pose to start reverse from there
+        const waypoints = latestRouteData.waypoints;
+        const lastPose = waypoints.length > 0
+            ? latestRouteData.poses?.[latestRouteData.poses.length - 1] || initialPose
+            : initialPose;
+
+        console.log('[WROPlaybackPlanner] Starting reverse mission with', reversedActions.length, 'actions');
+        startPlayback(reversedActions, lastPose);
+    }, [stopPlayback, startPlayback, initialPose]);
+
+    /**
+     * Start current section playback.
+     * Uses fresh data to find the section's actions.
+     */
+    const handleStartSection = useCallback(() => {
+        stopPlayback();
+
+        if (!currentSection) {
+            console.warn('[WROPlaybackPlanner] No section selected');
+            return;
+        }
+
+        const latestRouteData = routeDataRef.current;
+
+        // Filter actions that belong to current section
+        const sectionActions = latestRouteData.playbackActions.filter(
+            a => a.sectionId === currentSection.id
+        );
+
+        if (sectionActions.length === 0) {
+            console.warn('[WROPlaybackPlanner] No actions in current section');
+            return;
+        }
+
+        // Calculate start pose for this section
+        const startPose = computePoseUpToSection(sections, initialPose, currentSection.id, unitToPx);
+
+        console.log('[WROPlaybackPlanner] Starting section with', sectionActions.length, 'actions');
+        startPlayback(sectionActions, startPose);
+    }, [stopPlayback, startPlayback, currentSection, sections, initialPose, unitToPx]);
+
+    /**
+     * Start current section reverse playback.
+     */
+    const handleStartSectionReverse = useCallback(() => {
+        stopPlayback();
+
+        if (!currentSection) {
+            console.warn('[WROPlaybackPlanner] No section selected');
+            return;
+        }
+
+        const latestRouteData = routeDataRef.current;
+
+        // Filter actions that belong to current section
+        const sectionActions = latestRouteData.playbackActions.filter(
+            a => a.sectionId === currentSection.id
+        );
+
+        if (sectionActions.length === 0) {
+            console.warn('[WROPlaybackPlanner] No actions in current section');
+            return;
+        }
+
+        // Reverse the actions
+        const reversedActions = [];
+        for (let i = sectionActions.length - 1; i >= 0; i--) {
+            const action = sectionActions[i];
+            if (action.type === 'rotate') {
+                reversedActions.push({ ...action, angle: -action.angle });
+            } else if (action.type === 'move') {
+                reversedActions.push({ ...action, distance: -action.distance });
+            }
+        }
+
+        // Calculate end pose of section to start reverse from there
+        const startPose = computePoseUpToSection(sections, initialPose, currentSection.id, unitToPx);
+        const endPose = getPoseAfterActions(startPose, currentSection.actions, unitToPx);
+
+        console.log('[WROPlaybackPlanner] Starting section reverse with', reversedActions.length, 'actions');
+        startPlayback(reversedActions, endPose);
+    }, [stopPlayback, startPlayback, currentSection, sections, initialPose, unitToPx]);
+
+    // =========================================================================
+    // EFFECTS
+    // =========================================================================
+
+    // Load field background
     useEffect(() => {
         const preset = FIELD_PRESETS.find(p => p.key === fieldKey);
         if (preset && preset.bg) {
@@ -142,6 +452,7 @@ export default function WROPlaybackPlanner() {
         }
     }, [fieldKey]);
 
+    // Load robot image
     useEffect(() => {
         if (robot.imageSrc) {
             const img = new Image();
@@ -152,37 +463,188 @@ export default function WROPlaybackPlanner() {
         }
     }, [robot.imageSrc]);
 
-    // Auto-expand selected section and minimize others
+    // Auto-expand selected section
     useEffect(() => {
         setExpandedSections([selectedSectionId]);
     }, [selectedSectionId]);
 
-    const containerRef = useRef(null);
-
+    // Container resize handling
     useEffect(() => {
         const updateSize = () => {
             const container = containerRef.current;
             if (container) {
                 const rect = container.getBoundingClientRect();
                 const aspect = MAT_MM.w / MAT_MM.h;
-                // Subtract padding if necessary, but rect.width includes padding if box-sizing is border-box.
-                // We want the canvas to fill the available space. 
-                // Let's rely on the container width.
                 const w = Math.max(200, Math.floor(rect.width));
                 const h = Math.floor(w / aspect);
                 setCanvasBaseSize({ width: w, height: h });
             }
         };
+
         const resizeObserver = new ResizeObserver(() => updateSize());
         if (containerRef.current) {
             resizeObserver.observe(containerRef.current);
         }
-
-        // Initial sizing
         updateSize();
 
         return () => resizeObserver.disconnect();
     }, []);
+
+    // =========================================================================
+    // HANDLERS - Section Management
+    // =========================================================================
+
+    /**
+     * Delete a section and all its waypoints.
+     * This is the "rubber-band" delete - it simply removes the section,
+     * and the useMemo recalculates the route automatically.
+     */
+    const handleDeleteSection = useCallback((sectionId) => {
+        // ✅ IMPORTANT: Stop playback BEFORE modifying sections
+        // This prevents race conditions where playback reads stale data
+        if (isRunning) {
+            stopPlayback();
+        }
+
+        setSections(prevSections => {
+            // Don't delete if it's the last section
+            if (prevSections.length <= 1) {
+                return prevSections;
+            }
+
+            const filtered = prevSections.filter(s => s.id !== sectionId);
+
+            // Update selected section if needed
+            if (selectedSectionId === sectionId && filtered.length > 0) {
+                setSelectedSectionId(filtered[0].id);
+            }
+
+            return filtered;
+        });
+    }, [selectedSectionId, isRunning, stopPlayback]);
+
+    /**
+     * Delete all waypoints from a section (without deleting the section itself).
+     */
+    const handleClearSection = useCallback((sectionId) => {
+        if (isRunning) {
+            stopPlayback();
+        }
+
+        setSections(prevSections =>
+            prevSections.map(s =>
+                s.id === sectionId
+                    ? { ...s, points: [], actions: [] }
+                    : s
+            )
+        );
+    }, [isRunning, stopPlayback]);
+
+    const updateSectionActions = useCallback((sectionId, newActions) => {
+        // Stop playback when actions are modified
+        if (isRunning) {
+            stopPlayback();
+        }
+
+        setSections(prev => {
+            const modified = prev.map(s => {
+                if (s.id !== sectionId) return s;
+                const startPose = computePoseUpToSection(prev, initialPose, s.id, unitToPx);
+                const newPoints = pointsFromActions(newActions, startPose, unitToPx);
+                const endPose = getPoseAfterActions(startPose, newActions, unitToPx);
+                return {
+                    ...s,
+                    points: newPoints,
+                    actions: newActions,
+                    startAngle: startPose.theta * RAD2DEG,
+                    endAngle: endPose.theta * RAD2DEG
+                };
+            });
+
+            const changedIndex = modified.findIndex(s => s.id === sectionId);
+            if (changedIndex === -1 || changedIndex === modified.length - 1) {
+                return modified;
+            }
+
+            let runningPose = getPoseAfterActions(
+                computePoseUpToSection(modified, initialPose, sectionId, unitToPx),
+                newActions,
+                unitToPx
+            );
+
+            const result = [...modified];
+            for (let i = changedIndex + 1; i < result.length; i++) {
+                const section = result[i];
+                const endPose = getPoseAfterActions(runningPose, section.actions, unitToPx);
+                const updatedPoints = pointsFromActions(section.actions, runningPose, unitToPx);
+                result[i] = {
+                    ...section,
+                    points: updatedPoints,
+                    startAngle: runningPose.theta * RAD2DEG,
+                    endAngle: endPose.theta * RAD2DEG
+                };
+                runningPose = endPose;
+            }
+
+            return result;
+        });
+    }, [initialPose, unitToPx, isRunning, stopPlayback]);
+
+    const removeLastPointFromCurrentSection = useCallback(() => {
+        if (!currentSection || currentSection.points.length === 0) return;
+
+        if (isRunning) {
+            stopPlayback();
+        }
+
+        setSections(prev => {
+            const modified = prev.map(s => {
+                if (s.id !== currentSection.id) return s;
+                const newPts = s.points.slice(0, -1);
+                return { ...s, points: newPts };
+            });
+            return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
+        });
+    }, [currentSection, initialPose, pxToUnit, unitToPx, isRunning, stopPlayback]);
+
+    const addSection = () => {
+        const newId = uid('sec');
+        const randomColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+        setSections(prev => [...prev, {
+            id: newId,
+            name: `Sección ${prev.length + 1}`,
+            points: [],
+            actions: [],
+            color: randomColor,
+            isVisible: true
+        }]);
+        setSelectedSectionId(newId);
+        setExpandedSections(prev => [...prev, newId]);
+    };
+
+    const toggleSectionExpansion = (id) => {
+        setExpandedSections(prev => prev.includes(id) ? [] : [id]);
+    };
+
+    const toggleSectionVisibility = (id) => {
+        if (isRunning) {
+            stopPlayback();
+        }
+        setSections(prev => prev.map(s => s.id === id ? { ...s, isVisible: !s.isVisible } : s));
+    };
+
+    // =========================================================================
+    // HANDLERS - Tools & Navigation
+    // =========================================================================
+
+    const handleRulerToggle = () => {
+        setRulerActive(prev => !prev);
+        setRulerPoints({ start: null, end: null });
+    };
+
+    const handleZoomIn = () => setZoom(z => Math.min(z + ZOOM_LIMITS.step, ZOOM_LIMITS.max));
+    const handleZoomOut = () => setZoom(z => Math.max(z - ZOOM_LIMITS.step, ZOOM_LIMITS.min));
+    const handleZoomReset = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
 
     const handleBgUpload = (e) => {
         const file = e.target.files[0];
@@ -209,98 +671,9 @@ export default function WROPlaybackPlanner() {
         reader.readAsDataURL(file);
     };
 
-    const updateSectionActions = useCallback((sectionId, newActions) => {
-        setSections(prev => {
-            // Find the section and update its actions directly
-            const modified = prev.map(s => {
-                if (s.id !== sectionId) return s;
-                // Calculate start pose for this section
-                const startPose = computePoseUpToSection(prev, initialPose, s.id, unitToPx);
-                // Regenerate points from the new/reordered actions
-                const newPoints = pointsFromActions(newActions, startPose, unitToPx);
-                // Calculate end pose
-                const endPose = getPoseAfterActions(startPose, newActions, unitToPx);
-                // Return section with new actions PRESERVED (not regenerated)
-                return {
-                    ...s,
-                    points: newPoints,
-                    actions: newActions,
-                    startAngle: startPose.theta * RAD2DEG,
-                    endAngle: endPose.theta * RAD2DEG
-                };
-            });
-
-            // Now update following sections (their start points need to connect)
-            // but we don't want to regenerate actions for those either
-            const changedIndex = modified.findIndex(s => s.id === sectionId);
-            if (changedIndex === -1 || changedIndex === modified.length - 1) {
-                return modified;
-            }
-
-            // For following sections, just update their start pose/angles
-            let runningPose = getPoseAfterActions(
-                computePoseUpToSection(modified, initialPose, sectionId, unitToPx),
-                newActions,
-                unitToPx
-            );
-
-            const result = [...modified];
-            for (let i = changedIndex + 1; i < result.length; i++) {
-                const section = result[i];
-                const endPose = getPoseAfterActions(runningPose, section.actions, unitToPx);
-                const updatedPoints = pointsFromActions(section.actions, runningPose, unitToPx);
-                result[i] = {
-                    ...section,
-                    points: updatedPoints,
-                    startAngle: runningPose.theta * RAD2DEG,
-                    endAngle: endPose.theta * RAD2DEG
-                };
-                runningPose = endPose;
-            }
-
-            return result;
-        });
-    }, [initialPose, unitToPx]);
-
-    const removeLastPointFromCurrentSection = useCallback(() => {
-        if (!currentSection || currentSection.points.length === 0) return;
-        setSections(prev => {
-            const modified = prev.map(s => {
-                if (s.id !== currentSection.id) return s;
-                const newPts = s.points.slice(0, -1);
-                return { ...s, points: newPts };
-            });
-            return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
-        });
-    }, [currentSection, initialPose, pxToUnit, unitToPx]);
-
-    const addSection = () => {
-        const newId = uid('sec');
-        // Simple random color generator ensuring good visibility
-        const randomColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
-        setSections(prev => [...prev, { id: newId, name: `Sección ${prev.length + 1}`, points: [], actions: [], color: randomColor, isVisible: true }]);
-        setSelectedSectionId(newId);
-        setExpandedSections(prev => [...prev, newId]);
-    };
-
-    const toggleSectionExpansion = (id) => {
-        // Accordion behavior: if clicking an already expanded section, close it (empty array).
-        // Otherwise, set it as the ONLY expanded section.
-        setExpandedSections(prev => prev.includes(id) ? [] : [id]);
-    };
-
-    const toggleSectionVisibility = (id) => {
-        setSections(prev => prev.map(s => s.id === id ? { ...s, isVisible: !s.isVisible } : s));
-    };
-
-    const handleRulerToggle = () => {
-        setRulerActive(prev => !prev);
-        setRulerPoints({ start: null, end: null });
-    };
-
-    const handleZoomIn = () => setZoom(z => Math.min(z + ZOOM_LIMITS.step, ZOOM_LIMITS.max));
-    const handleZoomOut = () => setZoom(z => Math.max(z - ZOOM_LIMITS.step, ZOOM_LIMITS.min));
-    const handleZoomReset = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
+    // =========================================================================
+    // HANDLERS - Import/Export
+    // =========================================================================
 
     const exportMission = () => {
         const data = {
@@ -325,6 +698,12 @@ export default function WROPlaybackPlanner() {
     const importMission = (e) => {
         const file = e.target.files[0];
         if (!file) return;
+
+        // Stop playback before import
+        if (isRunning) {
+            stopPlayback();
+        }
+
         const reader = new FileReader();
         reader.onload = (evt) => {
             try {
@@ -351,7 +730,12 @@ export default function WROPlaybackPlanner() {
         const nextUnit = unit === 'cm' ? 'mm' : 'cm';
         const factor = nextUnit === 'mm' ? 10 : 0.1;
 
-        setRobot(r => ({ ...r, width: r.width * factor, length: r.length * factor, wheelOffset: r.wheelOffset ? r.wheelOffset * factor : r.wheelOffset }));
+        setRobot(r => ({
+            ...r,
+            width: r.width * factor,
+            length: r.length * factor,
+            wheelOffset: r.wheelOffset ? r.wheelOffset * factor : r.wheelOffset
+        }));
         setGrid(g => ({ ...g, cellSize: g.cellSize * factor }));
         setSections(secs => secs.map(s => ({
             ...s,
@@ -359,6 +743,10 @@ export default function WROPlaybackPlanner() {
         })));
         setUnit(nextUnit);
     };
+
+    // =========================================================================
+    // RENDER
+    // =========================================================================
 
     return (
         <div className="h-screen w-full bg-slate-100 flex flex-col overflow-hidden text-slate-800 font-sans selection:bg-indigo-100">
@@ -372,10 +760,10 @@ export default function WROPlaybackPlanner() {
                         setSnap45={setSnap45}
                         isRunning={isRunning}
                         isPaused={isPaused}
-                        startMission={startMission}
-                        startMissionReverse={startMissionReverse}
-                        startSection={startSection}
-                        startSectionReverse={startSectionReverse}
+                        startMission={handleStartMission}
+                        startMissionReverse={handleStartMissionReverse}
+                        startSection={handleStartSection}
+                        startSectionReverse={handleStartSectionReverse}
                         pauseResume={pauseResume}
                         stopPlayback={stopPlayback}
                         setShowOptions={setShowOptions}
@@ -420,7 +808,7 @@ export default function WROPlaybackPlanner() {
                     />
                 </aside>
 
-                {/* Right Panel - CANVAS */}
+                {/* Center Panel - CANVAS */}
                 <main ref={containerRef} className="flex-1 bg-white rounded-3xl border border-slate-200 shadow-2xl relative overflow-hidden flex flex-col items-center justify-center bg-slate-50/50">
                     <div className="absolute inset-0 z-0 flex items-center justify-center">
                         <CanvasBoard
@@ -473,7 +861,9 @@ export default function WROPlaybackPlanner() {
                             actionCursorRef={actionCursorRef}
                             unitToPx={unitToPx}
                             pxToUnit={pxToUnit}
-                            computePoseUpToSection={(sections, initialPose, sectionId, unitToPx) => computePoseUpToSection(sections, initialPose, sectionId, unitToPx)}
+                            computePoseUpToSection={(sections, initialPose, sectionId, unitToPx) =>
+                                computePoseUpToSection(sections, initialPose, sectionId, unitToPx)
+                            }
                             handleContextMenu={handleContextMenu}
                             removeLastPointFromCurrentSection={removeLastPointFromCurrentSection}
                             setGrid={setGrid}
@@ -484,14 +874,15 @@ export default function WROPlaybackPlanner() {
                             ghostOpacityOverride={ghostOpacityOverride}
                             setGhostOpacityOverride={setGhostOpacityOverride}
                             robotImageRotation={robotImageRotation}
-                            // Zoom & Pan controls
                             setZoom={setZoom}
                             pan={pan}
                             setPan={setPan}
+                            // Pass calculated path segments for optional overlay rendering
+                            calculatedPathSegments={routeData.pathSegments}
                         />
                     </div>
 
-                    {/* Floating Legend / Footer info inside canvas area */}
+                    {/* Floating Legend */}
                     <div style={{ position: 'absolute', bottom: 16, right: 16, zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, pointerEvents: 'none' }}>
                         <div className="option-card" style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: 8, pointerEvents: 'auto' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -509,6 +900,18 @@ export default function WROPlaybackPlanner() {
                         </div>
                     </div>
                 </main>
+
+                {/* Right Panel - WAYPOINTS INSTRUCTIONS */}
+                <aside style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                    <WaypointsPanel
+                        waypoints={routeData.waypoints}
+                        instructions={routeData.instructions}
+                        onDeleteSection={handleDeleteSection}
+                        unit={unit}
+                        isCollapsed={isWaypointsPanelCollapsed}
+                        setIsCollapsed={setIsWaypointsPanelCollapsed}
+                    />
+                </aside>
             </div>
 
             <OptionsPanel
@@ -548,16 +951,13 @@ export default function WROPlaybackPlanner() {
                     wheelOffset: robot.wheelOffset
                 }}
                 onSave={(config) => {
-                    // Sync with robot state
                     setRobot(r => ({
                         ...r,
                         length: config.length,
                         width: config.width,
                         wheelOffset: config.wheelOffset
                     }));
-                    // Persist to localStorage
                     saveRobotConfig(config);
-                    // Close modal
                     setShowRobotModal(false);
                 }}
                 unit={unit}
