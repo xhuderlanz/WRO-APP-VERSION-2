@@ -17,6 +17,7 @@ const OptionsPanel = ({
     ghostRobotOpacity, setGhostRobotOpacity,
     robotImageRotation, setRobotImageRotation,
     preventCollisions, setPreventCollisions,
+    collisionPadding, setCollisionPadding,
 }) => {
     const isMM = unit === 'mm';
     const sizeMin = isMM ? 1 : 0.1;
@@ -157,6 +158,32 @@ const OptionsPanel = ({
                                     </button>
                                 </div>
                                 <span className="option-field__hint">Impide añadir puntos que atraviesen obstáculos.</span>
+
+                                {preventCollisions && (
+                                    <div className="option-field" style={{ marginTop: '1rem' }}>
+                                        <span className="option-field__label">Margen de colisión ({unit})</span>
+                                        <div className="option-field__controls">
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="50"
+                                                step={isMM ? 1 : 0.5}
+                                                value={collisionPadding}
+                                                onChange={e => setCollisionPadding(Math.max(0, parseFloat(e.target.value) || 0))}
+                                                className="option-field__control"
+                                                style={{
+                                                    padding: '0.4rem',
+                                                    border: '1px solid #cbd5e1',
+                                                    borderRadius: '0.25rem',
+                                                    width: '100%'
+                                                }}
+                                            />
+                                        </div>
+                                        <span className="option-field__hint">
+                                            Zona de seguridad roja extra alrededor de obstáculos.
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                             <div className="option-divider" />
                             <div className="option-field option-field--range">
@@ -202,8 +229,8 @@ const OptionsPanel = ({
                                 <input
                                     type="color"
                                     className="option-field__control option-field__control--color"
-                                    value={grid.color || '#ffffffff'}
-                                    onChange={e => setGrid(g => ({ ...g, color: e.target.value }))}
+                                    value={(grid.color || '#ffffff').slice(0, 7)}
+                                    onChange={e => setGrid(g => ({ ...g, color: e.target.value + (grid.color?.slice(7) || 'ff') }))}
                                 />
                             </div>
                             <div className="option-card__grid option-card__grid--two">
@@ -259,8 +286,8 @@ const OptionsPanel = ({
                                     <input
                                         type="color"
                                         className="option-field__control option-field__control--color"
-                                        value={cursorGuideColor || '#ff0000ff'}
-                                        onChange={e => setCursorGuideColor(e.target.value)}
+                                        value={(cursorGuideColor || '#ff0000').slice(0, 7)}
+                                        onChange={e => setCursorGuideColor(e.target.value + (cursorGuideColor?.slice(7) || 'ff'))}
                                     />
                                 </div>
                                 <div className="option-field option-field--range">
@@ -320,7 +347,7 @@ const OptionsPanel = ({
                                     <input
                                         type="color"
                                         className="option-field__control option-field__control--color"
-                                        value={robot.color}
+                                        value={(robot.color || '#000000').slice(0, 7)}
                                         onChange={e => setRobot(r => ({ ...r, color: e.target.value }))}
                                     />
                                 </label>

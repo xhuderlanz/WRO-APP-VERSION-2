@@ -600,20 +600,24 @@ const CanvasBoard = ({
 
             // Draw Padded Boundary (Safety Margin)
             if (preventCollisions && collisionPadding > 0) {
-                const paddingPx = unitToPx(collisionPadding);
-                ctx.strokeStyle = '#ef4444';
-                ctx.lineWidth = 1;
-                ctx.setLineDash([5, 5]);
-                // Rect is centered, so from -w/2-p to w/2+p
-                // w starts at -w/2. width is w. 
-                // strokeRect(x,y,w,h)
-                ctx.strokeRect(
-                    (-obs.w / 2) - paddingPx,
-                    (-obs.h / 2) - paddingPx,
-                    obs.w + paddingPx * 2,
-                    obs.h + paddingPx * 2
-                );
-                ctx.setLineDash([]);
+                try {
+                    const paddingPx = unitToPx(collisionPadding);
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    // Rect is centered, so from -w/2-p to w/2+p
+                    // w starts at -w/2. width is w. 
+                    // strokeRect(x,y,w,h)
+                    ctx.strokeRect(
+                        (-obs.w / 2) - paddingPx,
+                        (-obs.h / 2) - paddingPx,
+                        obs.w + paddingPx * 2,
+                        obs.h + paddingPx * 2
+                    );
+                    ctx.setLineDash([]);
+                } catch (err) {
+                    console.error("Error drawing collision boundary:", err);
+                }
             }
 
             // Obstacle body
@@ -1090,31 +1094,37 @@ const CanvasBoard = ({
 
                 // COLLISION CHECK
                 if (preventCollisions) {
-                    const paddingPx = unitToPx(collisionPadding);
-                    const widthPx = unitToPx(robot.width);
-                    const lengthPx = unitToPx(robot.length);
-                    const robotPx = { width: widthPx, length: lengthPx };
+                    try {
+                        const paddingPx = unitToPx(collisionPadding);
+                        const widthPx = unitToPx(robot.width);
+                        const lengthPx = unitToPx(robot.length);
+                        const robotPx = { width: widthPx, length: lengthPx };
 
-                    // 1. Rotation Check at New Point
-                    // Calculate distance to obstacles. If < radius, block.
-                    if (checkRotationCollision(newPoint, obstacles, robotPx, paddingPx)) return;
+                        // 1. Rotation Check at New Point
+                        // Calculate distance to obstacles. If < radius, block.
+                        if (checkRotationCollision(newPoint, obstacles, robotPx, paddingPx)) return;
 
-                    // 2. Path Check (Previous -> New)
-                    // Check if point itself is inside an *inflated* obstacle (covered by rotation check mostly, but path check covers edges)
-                    // Use checkIntersection for a 0-length segment to trigger point-inside check with padding
-                    const obsHit = checkIntersection(newPoint, newPoint, obstacles, paddingPx);
-                    if (obsHit) return;
+                        // 2. Path Check (Previous -> New)
+                        // Check if point itself is inside an *inflated* obstacle (covered by rotation check mostly, but path check covers edges)
+                        // Use checkIntersection for a 0-length segment to trigger point-inside check with padding
+                        const obsHit = checkIntersection(newPoint, newPoint, obstacles, paddingPx);
+                        if (obsHit) return;
 
-                    const width = unitToPx(robot.width);
+                        const width = unitToPx(robot.width);
 
-                    // Check intersection with PREVIOUS point
-                    const prevP = prevPoint;
-                    if (checkPathCollision(prevP, newPoint, width, obstacles, paddingPx)) return;
+                        // Check intersection with PREVIOUS point
+                        const prevP = prevPoint;
+                        if (checkPathCollision(prevP, newPoint, width, obstacles, paddingPx)) return;
 
-                    // Check intersection with NEXT point
-                    if (index + 1 < currentSection.points.length) {
-                        const nextP = currentSection.points[index + 1];
-                        if (checkPathCollision(newPoint, nextP, width, obstacles, paddingPx)) return;
+                        // Check intersection with NEXT point
+                        if (index + 1 < currentSection.points.length) {
+                            const nextP = currentSection.points[index + 1];
+                            if (checkPathCollision(newPoint, nextP, width, obstacles, paddingPx)) return;
+                        }
+                    } catch (err) {
+                        console.error("Error in onCanvasClick collision check:", err);
+                        // In case of error, assume collision to be safe (or safe to ignore? better safe to ignore to not block flow)
+                        // Actually, if error, we should probably allow the click but log it.
                     }
                 }
 
@@ -1146,6 +1156,8 @@ const CanvasBoard = ({
             lastPanPointRef.current = { x: e.clientX, y: e.clientY };
             return;
         }
+
+        if (!robot) return; // Safety check
 
         const rawPoint = canvasPos(e, false);
         setCursorGuide({
@@ -1266,24 +1278,28 @@ const CanvasBoard = ({
             let isInvalid = false;
             let collisionType = null; // 'path' or 'rotation'
             if (preventCollisions) {
-                const paddingPx = unitToPx(collisionPadding);
-                const widthPx = unitToPx(robot.width);
-                const lengthPx = unitToPx(robot.length);
-                const robotPx = { width: widthPx, length: lengthPx };
+                try {
+                    const paddingPx = unitToPx(collisionPadding);
+                    const widthPx = unitToPx(robot.width);
+                    const lengthPx = unitToPx(robot.length);
+                    const robotPx = { width: widthPx, length: lengthPx };
 
-                // 1. Check Path Collision (Triple Line)
-                if (checkPathCollision(anchorPose, projection.center, widthPx, obstacles, paddingPx)) {
-                    isInvalid = true;
-                    collisionType = 'path';
-                }
-
-                // 2. Check Rotation Collision (Circle at Target)
-                // Only check if path is clear (or can check both)
-                if (!isInvalid) {
-                    if (checkRotationCollision(projection.center, obstacles, robotPx, paddingPx)) {
+                    // 1. Check Path Collision (Triple Line)
+                    if (checkPathCollision(anchorPose, projection.center, widthPx, obstacles, paddingPx)) {
                         isInvalid = true;
-                        collisionType = 'rotation';
+                        collisionType = 'path';
                     }
+
+                    // 2. Check Rotation Collision (Circle at Target)
+                    // Only check if path is clear (or can check both)
+                    if (!isInvalid) {
+                        if (checkRotationCollision(projection.center, obstacles, robotPx, paddingPx)) {
+                            isInvalid = true;
+                            collisionType = 'rotation';
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error in onCanvasMove collision check:", err);
                 }
             }
 

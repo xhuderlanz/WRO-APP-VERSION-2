@@ -157,7 +157,8 @@ export default function WROPlaybackPlanner() {
     // =========================================================================
     const [obstacles, setObstacles] = useState([]);
     const [selectedObstacleId, setSelectedObstacleId] = useState(null);
-    const [collisionPadding, setCollisionPadding] = useState(5); // Default 5cm padding
+    const [collisionPadding, setCollisionPadding] = useState(1.5); // Default 5cm padding
+    const [preventCollisions, setPreventCollisions] = useState(true);
 
     // =========================================================================
     // REFS
@@ -803,9 +804,8 @@ export default function WROPlaybackPlanner() {
     // HANDLERS - Obstacles
     // =========================================================================
 
-    // Add a default 20x20cm obstacle at canvas center
     const handleAddObstacle = useCallback(() => {
-        const sizePx = unitToPx(20) || 100; // 20cm default size or 100px fallback
+        const sizePx = unitToPx(20); // 20cm default size
         const newObstacle = {
             id: uid('obs'),
             x: canvasBaseSize.width / 2,
@@ -819,29 +819,28 @@ export default function WROPlaybackPlanner() {
         setSelectedObstacleId(newObstacle.id);
     }, [canvasBaseSize, unitToPx]);
 
-    // Update obstacle properties
     const handleUpdateObstacle = useCallback((id, newProps) => {
         setObstacles(prev => prev.map(obs =>
             obs.id === id ? { ...obs, ...newProps } : obs
         ));
     }, []);
 
-    // Delete selected obstacle
     const handleDeleteObstacle = useCallback(() => {
         if (!selectedObstacleId) return;
         setObstacles(prev => prev.filter(obs => obs.id !== selectedObstacleId));
         setSelectedObstacleId(null);
     }, [selectedObstacleId]);
 
-    // Select obstacle
     const handleSelectObstacle = useCallback((id) => {
         setSelectedObstacleId(id);
         if (id) {
-            setSelectedNode(null); // Deselect waypoint if obstacle selected
-            setSelectedSectionId(null);
+            setSelectedNode(null);
+            if (setSelectedSectionId && sections.length > 0) {
+                // Optional: Keep section selected or deselect? 
+                // Usually nice to deselect section logic if editing obstacle
+            }
         }
-    }, [setSelectedNode, setSelectedSectionId]);
-
+    }, [setSelectedNode]);
 
     // =========================================================================
     // RENDER
@@ -956,6 +955,7 @@ export default function WROPlaybackPlanner() {
                             onSelectObstacle={handleSelectObstacle}
                             onDeleteObstacle={handleDeleteObstacle}
                             collisionPadding={collisionPadding}
+                            preventCollisions={preventCollisions}
 
                             // Other props
                             setHoverNode={setHoverNode}
@@ -1041,6 +1041,10 @@ export default function WROPlaybackPlanner() {
                 setGrid={setGrid}
                 robot={robot}
                 setRobot={setRobot}
+                preventCollisions={preventCollisions}
+                setPreventCollisions={setPreventCollisions}
+                collisionPadding={collisionPadding}
+                setCollisionPadding={setCollisionPadding}
                 initialPose={initialPose}
                 setInitialPose={setInitialPose}
                 handleBgUpload={handleBgUpload}
