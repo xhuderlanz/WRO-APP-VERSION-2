@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
 import { DEG2RAD, RAD2DEG, SNAP_45_BASE_ANGLES } from "./domain/constants";
 import { normalizeAngle, getReferencePoint, getLastPoseOfSection, projectPointWithReference, pointsFromActions, buildActionsFromPolyline, computePoseUpToSection } from "./domain/geometry";
-// REMOVED: sections_stable.js imports - no longer needed in stateless architecture
+import { recalcAfterEditStable as recalcAllFollowingSections, recalcSectionFromPointsStable as recalcSectionFromPoints, recalcSectionsFromPointsStable } from "./domain/sections_stable";
 
 const CanvasBoard = ({
     fieldKey,
@@ -175,11 +175,14 @@ const CanvasBoard = ({
             // Check if a node is selected via selectedNode state
             if (selectedNode && selectedNode.sectionId && selectedNode.index >= 0) {
                 e.preventDefault();
-                setSections(prev => prev.map(s => {
-                    if (s.id !== selectedNode.sectionId) return s;
-                    const newPts = s.points.filter((_, i) => i !== selectedNode.index);
-                    return { ...s, points: newPts };
-                }));
+                setSections(prev => {
+                    const modified = prev.map(s => {
+                        if (s.id !== selectedNode.sectionId) return s;
+                        const newPts = s.points.filter((_, i) => i !== selectedNode.index);
+                        return { ...s, points: newPts };
+                    });
+                    return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
+                });
                 if (setSelectedNode) {
                     setSelectedNode(null);
                 }
@@ -189,11 +192,14 @@ const CanvasBoard = ({
             // Fallback: check if a point is selected via dragging state
             if (dragging.sectionId && dragging.index > -1) {
                 e.preventDefault();
-                setSections(prev => prev.map(s => {
-                    if (s.id !== dragging.sectionId) return s;
-                    const newPts = s.points.filter((_, i) => i !== dragging.index);
-                    return { ...s, points: newPts };
-                }));
+                setSections(prev => {
+                    const modified = prev.map(s => {
+                        if (s.id !== dragging.sectionId) return s;
+                        const newPts = s.points.filter((_, i) => i !== dragging.index);
+                        return { ...s, points: newPts };
+                    });
+                    return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
+                });
                 setDragging({ active: false, sectionId: null, index: -1 });
             }
         }
@@ -954,12 +960,15 @@ const CanvasBoard = ({
                     heading: undefined // Allow auto-calculation based on segment
                 };
 
-                setSections(prev => prev.map(s => {
-                    if (s.id !== currentSection.id) return s;
-                    const newPts = [...s.points];
-                    newPts.splice(index + 1, 0, newPoint);
-                    return { ...s, points: newPts };
-                }));
+                setSections(prev => {
+                    const modified = prev.map(s => {
+                        if (s.id !== currentSection.id) return s;
+                        const newPts = [...s.points];
+                        newPts.splice(index + 1, 0, newPoint);
+                        return { ...s, points: newPts };
+                    });
+                    return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
+                });
 
                 // Select the newly created point
                 setDragging({ active: true, sectionId: currentSection.id, index: index + 1 });
@@ -1007,21 +1016,30 @@ const CanvasBoard = ({
 
             setSections(prev => {
                 if (prev.length === 0 || prev[0].points.length === 0) return prev;
-                // Just trigger re-render - useMemo will recalculate with new initialPose
-                return [...prev];
+
+                const modified = prev.map((s, idx) => {
+                    if (idx !== 0) return s;
+                    // Keep same points, just update them in recalc
+                    return { ...s };
+                });
+
+                return recalcSectionsFromPointsStable({ sections: modified, initialPose: newInitialPose, unitToPx, pxToUnit });
             });
             return;
         }
 
         if (dragging.active) {
-            setSections(prev => prev.map(s => {
-                if (s.id !== dragging.sectionId) return s;
-                // Simply update the dragged point's coordinates
-                const newPoints = s.points.map((pt, i) =>
-                    i === dragging.index ? { ...pt, x: p.x, y: p.y } : pt
-                );
-                return { ...s, points: newPoints };
-            }));
+            setSections(prev => {
+                const modified = prev.map(s => {
+                    if (s.id !== dragging.sectionId) return s;
+                    // Simply update the dragged point's coordinates
+                    const newPoints = s.points.map((pt, i) =>
+                        i === dragging.index ? { ...pt, x: p.x, y: p.y } : pt
+                    );
+                    return { ...s, points: newPoints };
+                });
+                return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
+            });
             return;
         }
 
@@ -1071,11 +1089,14 @@ const CanvasBoard = ({
                         return;
                     }
                     const centerPoint = projection.center;
-                    setSections(prev => prev.map(s => {
-                        if (s.id !== currentSection.id) return s;
-                        const newPts = [...s.points, { ...centerPoint, reverse: reverseDrawing, reference: segmentReference, heading: projection.theta }];
-                        return { ...s, points: newPts };
-                    }));
+                    setSections(prev => {
+                        const modified = prev.map(s => {
+                            if (s.id !== currentSection.id) return s;
+                            const newPts = [...s.points, { ...centerPoint, reverse: reverseDrawing, reference: segmentReference, heading: projection.theta }];
+                            return { ...s, points: newPts };
+                        });
+                        return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
+                    });
                     drawSessionRef.current = {
                         active: true,
                         lastPoint: { x: centerPoint.x, y: centerPoint.y, heading: projection.theta },
@@ -1138,11 +1159,14 @@ const CanvasBoard = ({
         const segmentReference = referenceMode;
         const projection = projectPointWithReference({ rawPoint: p, anchorPose: basePose, reference: segmentReference, reverse: reverseDrawing, halfRobotLengthPx: unitToPx(robot.wheelOffset ?? robot.length / 2), snap45, baseAngles: SNAP_45_BASE_ANGLES });
         const centerPoint = projection.center;
-        setSections(prev => prev.map(s => {
-            if (s.id !== currentSection.id) return s;
-            const newPts = [...s.points, { ...centerPoint, reverse: reverseDrawing, reference: segmentReference, heading: projection.theta }];
-            return { ...s, points: newPts };
-        }));
+        setSections(prev => {
+            const modified = prev.map(s => {
+                if (s.id !== currentSection.id) return s;
+                const newPts = [...s.points, { ...centerPoint, reverse: reverseDrawing, reference: segmentReference, heading: projection.theta }];
+                return { ...s, points: newPts };
+            });
+            return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
+        });
         drawSessionRef.current = { active: false, lastPoint: null, addedDuringDrag: false };
         drawThrottleRef.current.lastAutoAddTs = Date.now();
     };

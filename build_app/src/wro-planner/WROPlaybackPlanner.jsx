@@ -49,8 +49,11 @@ import {
     projectPointWithReference,
     getPoseAfterActions
 } from "./domain/geometry";
-// REMOVED: sections_stable.js imports - no longer needed in stateless architecture
-// Route data is now derived via useMemo + pathCalculator automatically
+import {
+    recalcAfterEditStable as recalcAllFollowingSections,
+    recalcSectionFromPointsStable as recalcSectionFromPoints,
+    recalcSectionsFromPointsStable
+} from "./domain/sections_stable";
 import {
     loadRobotConfig,
     saveRobotConfig,
@@ -602,11 +605,14 @@ export default function WROPlaybackPlanner() {
             stopPlayback();
         }
 
-        setSections(prev => prev.map(s => {
-            if (s.id !== currentSection.id) return s;
-            const newPts = s.points.slice(0, -1);
-            return { ...s, points: newPts };
-        }));
+        setSections(prev => {
+            const modified = prev.map(s => {
+                if (s.id !== currentSection.id) return s;
+                const newPts = s.points.slice(0, -1);
+                return { ...s, points: newPts };
+            });
+            return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
+        });
     }, [currentSection, initialPose, pxToUnit, unitToPx, isRunning, stopPlayback]);
 
     const addSection = () => {
@@ -660,16 +666,26 @@ export default function WROPlaybackPlanner() {
                 stopPlayback();
             }
 
-            setSections(prevSections => prevSections.map(s => {
-                if (s.id !== selectedNode.sectionId) return s;
+            setSections(prevSections => {
+                const modified = prevSections.map(s => {
+                    if (s.id !== selectedNode.sectionId) return s;
 
-                const newPoints = s.points.map((p, i) => {
-                    if (i !== selectedNode.index) return p;
-                    return { ...p, reverse: !p.reverse };
+                    const newPoints = s.points.map((p, i) => {
+                        if (i !== selectedNode.index) return p;
+                        return { ...p, reverse: !p.reverse };
+                    });
+
+                    return { ...s, points: newPoints };
                 });
 
-                return { ...s, points: newPoints };
-            }));
+                // Recalculate actions after toggling reverse
+                return recalcSectionsFromPointsStable({
+                    sections: modified,
+                    initialPose,
+                    unitToPx,
+                    pxToUnit
+                });
+            });
 
             console.log('[WROPlaybackPlanner] Toggled reverse for waypoint:', selectedNode);
         } else {

@@ -47,6 +47,7 @@
 | `playback.js` | ✅ KEEP | Active: `usePlayback` hook for animation primitives. | None |
 | `constants.js` | ✅ KEEP | Active: Field presets, defaults, unit conversions. | None |
 | `robotConfigStorage.js` | ✅ KEEP | Active: LocalStorage persistence for robot config. | None |
+| `sections_stable.js` | ✅ KEEP | **ACTIVE**: Recalculates `actions[]` from points. Used by WROPlaybackPlanner and CanvasBoard. | None |
 | `sections.js` | 🗑️ DELETE | **DEAD CODE**: Legacy recalc logic. Marked as "LEGACY" in file. Never imported. | Delete file |
 | `sections_v2.js` | 🗑️ DELETE | **DEAD CODE**: Experimental V2 section logic. Never imported anywhere. | Delete file |
 | `sections_v3.js` | 🗑️ DELETE | **DEAD CODE**: Experimental V3 section logic. Never imported anywhere. | Delete file |

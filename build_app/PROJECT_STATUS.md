@@ -46,9 +46,9 @@ src/wro-planner/
 │   ├── playback.js             # ▶️ usePlayback hook (animation primitives)
 │   ├── constants.js            # 📏 Field presets, defaults, units
 │   ├── robotConfigStorage.js   # 💾 LocalStorage for robot config
-│   ├── sections.js             # Section utilities (legacy, unused)
+│   ├── sections.js             # Section utilities
+│   ├── sections_stable.js      # 🔒 Stable section recalculation (DO NOT MODIFY)
 │   └── collision/              # Collision detection utilities
-│   # NOTE: sections_stable.js was DELETED - functionality moved to useMemo + pathCalculator
 │
 ├── components/
 │   ├── RobotSizeModal.jsx      # 🤖 Modal for robot dimensions
@@ -66,6 +66,7 @@ src/wro-planner/
 | `pathCalculator.js` | **Math Logic** | `calculateRouteInstructions()`, `flattenSectionsToWaypoints()`, `generatePlaybackActions()` |
 | `CanvasBoard.jsx` | **Dumb Renderer** | Receives `calculatedPathSegments` prop, draws everything |
 | `playback.js` | **Animation** | `usePlayback()` hook, `startPlayback()`, `stopPlayback()` |
+| `sections_stable.js` | **Recalculation** | `recalcSectionsFromPointsStable()` - DO NOT MODIFY |
 
 ---
 
