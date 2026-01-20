@@ -153,6 +153,12 @@ export default function WROPlaybackPlanner() {
     const [showShortcuts, setShowShortcuts] = useState(false);
 
     // =========================================================================
+    // STATE - Interactive Obstacles
+    // =========================================================================
+    const [obstacles, setObstacles] = useState([]);
+    const [selectedObstacleId, setSelectedObstacleId] = useState(null);
+
+    // =========================================================================
     // REFS
     // =========================================================================
     const drawSessionRef = useRef({ active: false, lastPoint: null, addedDuringDrag: false });
@@ -694,6 +700,46 @@ export default function WROPlaybackPlanner() {
         }
     }, [selectedNode, isRunning, stopPlayback, initialPose, unitToPx, pxToUnit]);
 
+    // =========================================================================
+    // HANDLERS - Obstacle Management
+    // =========================================================================
+
+    /**
+     * Add a default 20x20cm obstacle at canvas center
+     */
+    const handleAddObstacle = useCallback(() => {
+        const sizePx = unitToPx(20); // 20cm default size
+        const newObstacle = {
+            id: uid('obs'),
+            x: canvasBaseSize.width / 2,
+            y: canvasBaseSize.height / 2,
+            w: sizePx,
+            h: sizePx,
+            color: '#f97316', // orange-500
+            rotation: 0
+        };
+        setObstacles(prev => [...prev, newObstacle]);
+        setSelectedObstacleId(newObstacle.id);
+    }, [canvasBaseSize, unitToPx]);
+
+    /**
+     * Update obstacle properties (position, size, etc.)
+     */
+    const handleUpdateObstacle = useCallback((id, newProps) => {
+        setObstacles(prev => prev.map(obs =>
+            obs.id === id ? { ...obs, ...newProps } : obs
+        ));
+    }, []);
+
+    /**
+     * Delete the currently selected obstacle
+     */
+    const handleDeleteObstacle = useCallback(() => {
+        if (!selectedObstacleId) return;
+        setObstacles(prev => prev.filter(obs => obs.id !== selectedObstacleId));
+        setSelectedObstacleId(null);
+    }, [selectedObstacleId]);
+
     const handleBgUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -829,6 +875,7 @@ export default function WROPlaybackPlanner() {
                         playbackSpeed={playbackSpeed}
                         setPlaybackSpeed={setPlaybackSpeed}
                         onOpenShortcuts={() => setShowShortcuts(true)}
+                        onAddObstacle={handleAddObstacle}
                     />
                 </div>
             </header>
@@ -934,6 +981,12 @@ export default function WROPlaybackPlanner() {
                             setSelectedNode={setSelectedNode}
                             // Toggle reverse handler (respects selectedNode)
                             onToggleReverse={handleToggleReverse}
+                            // Obstacle props
+                            obstacles={obstacles}
+                            selectedObstacleId={selectedObstacleId}
+                            onSelectObstacle={setSelectedObstacleId}
+                            onUpdateObstacle={handleUpdateObstacle}
+                            onDeleteObstacle={handleDeleteObstacle}
                         />
                     </div>
 

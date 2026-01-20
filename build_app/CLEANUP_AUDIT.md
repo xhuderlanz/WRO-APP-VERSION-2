@@ -22,8 +22,8 @@
 
 | File | Status | Reasoning | Action |
 |------|--------|-----------|--------|
-| `WROPlaybackPlanner.jsx` | ⚠️ REFACTOR | Core controller. Has unused geometry imports surviving from legacy architecture. | See [Refactor Details](#refactor-wroplaybackplannerjsx) |
-| `CanvasBoard.jsx` | ⚠️ REFACTOR | Core renderer. Contains legacy fallback drawing code (lines 528-585) and unused imports. | See [Refactor Details](#refactor-canvasboardjsx) |
+| `WROPlaybackPlanner.jsx` | ✅ KEEP | Core controller with `sections` state and `useMemo` routing. | None |
+| `CanvasBoard.jsx` | ✅ KEEP | Core renderer. ✅ *Cleaned:* Removed legacy fallback code and unused imports. | None |
 | `SectionsPanel.jsx` | ✅ KEEP | Active UI: Section list management with add/delete/select. | None |
 | `SectionsPanel.css` | ✅ KEEP | Active styles for SectionsPanel. | None |
 | `WaypointsPanel.jsx` | ✅ KEEP | Active UI: Displays calculated instructions grouped by section. | None |

@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
 import { DEG2RAD, RAD2DEG, SNAP_45_BASE_ANGLES } from "./domain/constants";
-import { normalizeAngle, getReferencePoint, getLastPoseOfSection, projectPointWithReference, pointsFromActions, buildActionsFromPolyline, computePoseUpToSection } from "./domain/geometry";
+import { normalizeAngle, getReferencePoint, getLastPoseOfSection, projectPointWithReference, computePoseUpToSection } from "./domain/geometry";
 import { recalcAfterEditStable as recalcAllFollowingSections, recalcSectionFromPointsStable as recalcSectionFromPoints, recalcSectionsFromPointsStable } from "./domain/sections_stable";
 
 const CanvasBoard = ({
@@ -73,12 +73,24 @@ const CanvasBoard = ({
     setSelectedNode,
     // NEW: Toggle reverse handler from parent (respects selectedNode)
     onToggleReverse,
+    // Obstacle props
+    obstacles = [],
+    selectedObstacleId,
+    onSelectObstacle,
+    onUpdateObstacle,
+    onDeleteObstacle,
 }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const [isDraggingRuler, setIsDraggingRuler] = useState(false);
     const isPanningRef = useRef(false);
     const lastPanPointRef = useRef({ x: 0, y: 0 });
+
+    // Obstacle interaction state
+    // Mode: 'none' | 'drag' | 'resize_nw' | 'resize_ne' | 'resize_sw' | 'resize_se'
+    const [obstacleMode, setObstacleMode] = useState('none');
+    const [activeObstacleId, setActiveObstacleId] = useState(null);
+    const obstacleStartRef = useRef({ x: 0, y: 0, obsX: 0, obsY: 0, obsW: 0, obsH: 0 });
 
     const DRAW_STEP_MIN_PX = 6;
     const DRAW_AUTO_INTERVAL_MS = 340;
@@ -148,13 +160,18 @@ const CanvasBoard = ({
             return;
         }
 
-        // Escape: Deselect selected node
+        // Escape: Deselect selected node and obstacle
         if (e.key === 'Escape') {
             e.preventDefault();
+            if (onSelectObstacle) {
+                onSelectObstacle(null);
+            }
             if (setSelectedNode) {
                 setSelectedNode(null);
             }
             setDragging({ active: false, sectionId: null, index: -1 });
+            setObstacleMode('none');
+            setActiveObstacleId(null);
             return;
         }
 
@@ -170,8 +187,14 @@ const CanvasBoard = ({
             return;
         }
 
-        // Delete point
+        // Delete: Priority 1 - Delete selected obstacle
         if ((e.key === 'Delete' || e.key === 'Backspace') && !isRunning) {
+            // Check if an obstacle is selected
+            if (selectedObstacleId && onDeleteObstacle) {
+                e.preventDefault();
+                onDeleteObstacle();
+                return;
+            }
             // Check if a node is selected via selectedNode state
             if (selectedNode && selectedNode.sectionId && selectedNode.index >= 0) {
                 e.preventDefault();
@@ -203,7 +226,7 @@ const CanvasBoard = ({
                 setDragging({ active: false, sectionId: null, index: -1 });
             }
         }
-    }, [dragging, isRunning, sections, selectedSectionId, initialPose, setDrawMode, setSnap45, addSection, setSelectedSectionId, setReferenceMode, setReverseDrawing, setGhostOpacityOverride, setSections, setDragging, pxToUnit, unitToPx, selectedNode, setSelectedNode, onToggleReverse]);
+    }, [dragging, isRunning, sections, selectedSectionId, initialPose, setDrawMode, setSnap45, addSection, setSelectedSectionId, setReferenceMode, setReverseDrawing, setGhostOpacityOverride, setSections, setDragging, pxToUnit, unitToPx, selectedNode, setSelectedNode, onToggleReverse, selectedObstacleId, onDeleteObstacle, onSelectObstacle]);
 
     const handleKeyUp = useCallback((e) => {
         if (e.code === 'Space') {
@@ -250,6 +273,32 @@ const CanvasBoard = ({
             if (dx * dx + dy * dy <= rSq) return i;
         }
         return -1;
+    }, []);
+
+    // Obstacle hit test: check if point hits a resize handle
+    const hitTestObstacleHandle = useCallback((obs, px, py, handleSize = 10) => {
+        const corners = ['nw', 'ne', 'sw', 'se'];
+        const offsets = [
+            { x: obs.x - obs.w / 2, y: obs.y - obs.h / 2 },
+            { x: obs.x + obs.w / 2, y: obs.y - obs.h / 2 },
+            { x: obs.x - obs.w / 2, y: obs.y + obs.h / 2 },
+            { x: obs.x + obs.w / 2, y: obs.y + obs.h / 2 },
+        ];
+        for (let i = 0; i < 4; i++) {
+            const { x, y } = offsets[i];
+            if (Math.abs(px - x) <= handleSize && Math.abs(py - y) <= handleSize) {
+                return corners[i];
+            }
+        }
+        return null;
+    }, []);
+
+    // Obstacle hit test: check if point is inside obstacle body
+    const hitTestObstacle = useCallback((obs, px, py) => {
+        const halfW = obs.w / 2;
+        const halfH = obs.h / 2;
+        return px >= obs.x - halfW && px <= obs.x + halfW &&
+            py >= obs.y - halfH && py <= obs.y + halfH;
     }, []);
 
     const drawRobot = useCallback((ctx, pose, isGhost = false, showModeIndicator = false) => {
@@ -531,59 +580,48 @@ const CanvasBoard = ({
                     ctx.restore();
                 });
             });
-        } else {
-            // FALLBACK: Legacy path drawing from sections (for backwards compatibility)
-            sections.forEach(s => {
-                if (!s.isVisible || s.points.length === 0) return;
-                const sectionStartPose = computePoseUpToSection(sections, initialPose, s.id, unitToPx);
-
-                ctx.beginPath();
-                ctx.strokeStyle = s.color;
-                ctx.lineWidth = 3;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                ctx.moveTo(sectionStartPose.x, sectionStartPose.y);
-                for (let i = 0; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
-                ctx.stroke();
-
-                // Draw direction arrows on segments
-                let arrowPose = sectionStartPose;
-                s.points.forEach((pt) => {
-                    const reference = pt.reference || 'center';
-                    const startDisplay = getReferencePoint(arrowPose, reference, unitToPx(robot.wheelOffset ?? robot.length / 2));
-                    const dx = pt.x - arrowPose.x;
-                    const dy = pt.y - arrowPose.y;
-                    const dist = Math.hypot(dx, dy);
-                    let segmentTheta = typeof pt.heading === 'number' ? pt.heading : arrowPose.theta;
-                    if (dist >= 1e-3) {
-                        const headingToPoint = Math.atan2(dy, dx);
-                        segmentTheta = typeof pt.heading === 'number'
-                            ? pt.heading
-                            : normalizeAngle(pt.reverse ? headingToPoint + Math.PI : headingToPoint);
-                    }
-                    const endPose = { x: pt.x, y: pt.y, theta: segmentTheta };
-                    const endDisplay = getReferencePoint(endPose, reference, unitToPx(robot.wheelOffset ?? robot.length / 2));
-
-                    const midX = (startDisplay.x + endDisplay.x) / 2;
-                    const midY = (startDisplay.y + endDisplay.y) / 2;
-                    const segmentAngle = Math.atan2(endDisplay.y - startDisplay.y, endDisplay.x - startDisplay.x);
-
-                    ctx.save();
-                    ctx.translate(midX, midY);
-                    ctx.rotate(segmentAngle);
-                    ctx.fillStyle = s.color || '#000';
-                    ctx.beginPath();
-                    ctx.moveTo(8, 0);
-                    ctx.lineTo(0, -4);
-                    ctx.lineTo(0, 4);
-                    ctx.closePath();
-                    ctx.fill();
-                    ctx.restore();
-
-                    arrowPose = endPose;
-                });
-            });
         }
+        // NOTE: Legacy fallback drawing removed - component now ONLY uses calculatedPathSegments
+
+        // =====================================================================
+        // OBSTACLES - Draw interactive obstacles
+        // =====================================================================
+        obstacles.forEach(obs => {
+            ctx.save();
+            ctx.translate(obs.x, obs.y);
+            ctx.rotate((obs.rotation || 0) * DEG2RAD);
+
+            // Obstacle body
+            ctx.fillStyle = obs.color || '#f97316';
+            ctx.globalAlpha = 0.7;
+            ctx.fillRect(-obs.w / 2, -obs.h / 2, obs.w, obs.h);
+            ctx.globalAlpha = 1;
+
+            // Border
+            ctx.strokeStyle = selectedObstacleId === obs.id ? '#06b6d4' : '#c2410c';
+            ctx.lineWidth = selectedObstacleId === obs.id ? 3 : 2;
+            ctx.strokeRect(-obs.w / 2, -obs.h / 2, obs.w, obs.h);
+
+            // Resize handles (only if selected)
+            if (selectedObstacleId === obs.id) {
+                const handleSize = 8;
+                const corners = [
+                    { x: -obs.w / 2, y: -obs.h / 2 },
+                    { x: obs.w / 2, y: -obs.h / 2 },
+                    { x: -obs.w / 2, y: obs.h / 2 },
+                    { x: obs.w / 2, y: obs.h / 2 },
+                ];
+                corners.forEach(({ x, y }) => {
+                    ctx.fillStyle = '#06b6d4';
+                    ctx.fillRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
+                });
+            }
+
+            ctx.restore();
+        });
 
         // NODES - Still drawn from sections for edit mode interaction
         sections.forEach(s => {
@@ -774,7 +812,7 @@ const CanvasBoard = ({
             ctx.restore();
         }
 
-    }, [bgImage, bgOpacity, grid, unitToPx, sections, selectedSectionId, drawMode, hoverNode, ghost, isRunning, playPose, robot, robotImgObj, actionCursorRef, initialPose, drawRobot, rulerActive, rulerPoints, pxToUnit, unit, cursorGuide, calculatedPathSegments, dragging, cursorGuideColor, cursorGuideLineWidth, selectedNode]);
+    }, [bgImage, bgOpacity, grid, unitToPx, sections, selectedSectionId, drawMode, hoverNode, ghost, isRunning, playPose, robot, robotImgObj, actionCursorRef, initialPose, drawRobot, rulerActive, rulerPoints, pxToUnit, unit, cursorGuide, calculatedPathSegments, dragging, cursorGuideColor, cursorGuideLineWidth, selectedNode, obstacles, selectedObstacleId]);
 
     useEffect(() => {
         const cvs = canvasRef.current;
@@ -910,11 +948,51 @@ const CanvasBoard = ({
 
         // Edit Mode (Not Draw Mode)
         if (!drawMode) {
-            const p = canvasPos(e);
+            const p = canvasPos(e, false); // Use raw coordinates for obstacle interaction
+
+            // PRIORITY 1: Check resize handles on selected obstacle
+            if (selectedObstacleId) {
+                const obs = obstacles.find(o => o.id === selectedObstacleId);
+                if (obs) {
+                    const handle = hitTestObstacleHandle(obs, p.x, p.y);
+                    if (handle) {
+                        setObstacleMode(`resize_${handle}`);
+                        setActiveObstacleId(obs.id);
+                        obstacleStartRef.current = {
+                            x: p.x, y: p.y,
+                            obsX: obs.x, obsY: obs.y,
+                            obsW: obs.w, obsH: obs.h
+                        };
+                        return;
+                    }
+                }
+            }
+
+            // PRIORITY 2: Check obstacle body (Move/Select)
+            // Use raw coordinates for obstacle body hit test too
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                if (hitTestObstacle(obs, p.x, p.y)) {
+                    if (onSelectObstacle) onSelectObstacle(obs.id);
+                    // Also select node null to avoid conflicts
+                    if (setSelectedNode) setSelectedNode(null);
+
+                    setObstacleMode('drag');
+                    setActiveObstacleId(obs.id);
+                    obstacleStartRef.current = { x: p.x, y: p.y, obsX: obs.x, obsY: obs.y };
+                    return;
+                }
+            }
+
+            // If we clicked on empty space and have an obstacle selected, deselect it
+            // UNLESS we hit a node or segment (handled below)
+            const pSnap = canvasPos(e); // Use snapped for nodes
 
             // 1. Check if clicking on initial pose
-            if (Math.hypot(initialPose.x - p.x, initialPose.y - p.y) <= 10) {
+            if (Math.hypot(initialPose.x - pSnap.x, initialPose.y - pSnap.y) <= 10) {
                 setDraggingStart(true);
+                // Also deselect obstacle if any
+                if (onSelectObstacle) onSelectObstacle(null);
                 return;
             }
 
@@ -922,12 +1000,15 @@ const CanvasBoard = ({
             // First, check ALL sections for node hits, not just current section
             for (const section of sections) {
                 if (!section.isVisible) continue;
-                const idx = hitTestNode(section.points, p, 10);
+                const idx = hitTestNode(section.points, pSnap, 10);
                 if (idx > -1) {
                     // Set as selected node for editing
                     if (setSelectedNode) {
                         setSelectedNode({ sectionId: section.id, index: idx });
                     }
+                    // Deselect obstacle
+                    if (onSelectObstacle) onSelectObstacle(null);
+
                     // Also set as dragging if it's the current section
                     if (section.id === currentSection?.id) {
                         setDragging({ active: true, sectionId: section.id, index: idx });
@@ -939,14 +1020,17 @@ const CanvasBoard = ({
                 }
             }
 
-            // 3. Click on empty area - deselect any selected node
+            // 3. Click on empty area - deselect any selected node AND obstacle
             if (setSelectedNode) {
                 setSelectedNode(null);
+            }
+            if (onSelectObstacle) {
+                onSelectObstacle(null);
             }
 
             // 4. Check if clicking on a segment (Insert Point) - only for current section
             const startPose = computePoseUpToSection(sections, initialPose, currentSection.id, unitToPx);
-            const hitSegment = hitTestSegment(startPose, currentSection.points, p, 8);
+            const hitSegment = hitTestSegment(startPose, currentSection.points, pSnap, 8);
             if (hitSegment) {
                 const { index, point } = hitSegment;
                 // Insert point at index + 1
@@ -1001,6 +1085,42 @@ const CanvasBoard = ({
 
         if (!drawMode || !currentSection) {
             setGhost(prev => (prev.active ? { ...prev, active: false } : prev));
+        }
+
+        // Handle obstacle drag/resize
+        if (obstacleMode !== 'none' && activeObstacleId) {
+            const obs = obstacles.find(o => o.id === activeObstacleId);
+            if (!obs) return;
+
+            const start = obstacleStartRef.current;
+            const dx = rawPoint.x - start.x;
+            const dy = rawPoint.y - start.y;
+
+            if (obstacleMode === 'drag') {
+                if (onUpdateObstacle) {
+                    onUpdateObstacle(activeObstacleId, {
+                        x: start.obsX + dx,
+                        y: start.obsY + dy
+                    });
+                }
+            } else if (obstacleMode.startsWith('resize_')) {
+                const corner = obstacleMode.replace('resize_', '');
+                let newW = start.obsW;
+                let newH = start.obsH;
+                let newX = start.obsX;
+                let newY = start.obsY;
+
+                // Simple resize logic from center
+                if (corner.includes('e')) { newW = Math.max(10, start.obsW + dx); newX = start.obsX + dx / 2; }
+                if (corner.includes('w')) { newW = Math.max(10, start.obsW - dx); newX = start.obsX + dx / 2; }
+                if (corner.includes('s')) { newH = Math.max(10, start.obsH + dy); newY = start.obsY + dy / 2; }
+                if (corner.includes('n')) { newH = Math.max(10, start.obsH - dy); newY = start.obsY + dy / 2; }
+
+                if (onUpdateObstacle) {
+                    onUpdateObstacle(activeObstacleId, { x: newX, y: newY, w: newW, h: newH });
+                }
+            }
+            return;
         }
 
         if (rulerActive && isDraggingRuler) {
@@ -1121,6 +1241,12 @@ const CanvasBoard = ({
             setIsDraggingRuler(false);
             return;
         }
+
+        if (obstacleMode !== 'none') {
+            setObstacleMode('none');
+            setActiveObstacleId(null);
+        }
+
         setDraggingStart(false);
         // Do NOT clear dragging here to allow selection for deletion
         // Only stop the "active" dragging (movement)
