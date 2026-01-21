@@ -842,6 +842,54 @@ export default function WROPlaybackPlanner() {
         }
     }, [setSelectedNode]);
 
+    const handleExportObstacles = useCallback(() => {
+        const data = {
+            version: "1.0",
+            obstacles: obstacles
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `obstaculos_campo.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, [obstacles]);
+
+    const handleImportObstacles = useCallback((e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (isRunning) {
+            stopPlayback();
+        }
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const data = JSON.parse(evt.target.result);
+                // Validation
+                if (!data.obstacles || !Array.isArray(data.obstacles)) {
+                    alert("Archivo inválido: No se encontró la lista de obstáculos.");
+                    return;
+                }
+
+                // Set obstacles (replaces current ones as per user implication "recuperarlo instantáneamente")
+                setObstacles(data.obstacles);
+
+                // Select nothing
+                setSelectedObstacleId(null);
+            } catch (err) {
+                console.error("Error importando obstáculos", err);
+                alert("Error al leer el archivo JSON.");
+            }
+        };
+        reader.readAsText(file);
+
+        // Reset input
+        e.target.value = null;
+    }, [isRunning, stopPlayback]);
+
     // =========================================================================
     // RENDER
     // =========================================================================
@@ -880,6 +928,8 @@ export default function WROPlaybackPlanner() {
                         setPlaybackSpeed={setPlaybackSpeed}
                         onOpenShortcuts={() => setShowShortcuts(true)}
                         onAddObstacle={handleAddObstacle}
+                        onExportObstacles={handleExportObstacles}
+                        onImportObstacles={handleImportObstacles}
                     />
                 </div>
             </header>

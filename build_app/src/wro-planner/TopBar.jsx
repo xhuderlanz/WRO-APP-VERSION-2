@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { IconRuler, IconTarget } from "./icons";
+import { IconRuler, IconTarget, IconDownload, IconUpload } from "./icons";
 import useBreakpoint from "./hooks/useBreakpoint";
 import "./TopBar.css";
 
@@ -11,7 +11,10 @@ const TopBar = ({
     zoom, onZoomIn, onZoomOut, onZoomReset, playbackSpeed, setPlaybackSpeed,
     onOpenShortcuts,
     onAddObstacle,
+    onExportObstacles,
+    onImportObstacles
 }) => {
+    const fileInputRef = useRef(null);
     const [quickMenu, setQuickMenu] = useState({ open: false, target: null, anchor: { x: 0, y: 0 } });
     const [hamburgerOpen, setHamburgerOpen] = useState(false);
     const longPressTimerRef = useRef(null);
@@ -227,6 +230,35 @@ const TopBar = ({
                                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                                     </svg>
                                 </button>
+                                {onExportObstacles && (
+                                    <button
+                                        onClick={onExportObstacles}
+                                        className="topbar__chip topbar__chip--inactive"
+                                        title="Exportar Obstáculos"
+                                        aria-label="Exportar Obstáculos"
+                                    >
+                                        <IconDownload width={18} height={18} />
+                                    </button>
+                                )}
+                                {onImportObstacles && (
+                                    <>
+                                        <input
+                                            type="file"
+                                            accept=".json"
+                                            ref={fileInputRef}
+                                            style={{ display: 'none' }}
+                                            onChange={onImportObstacles}
+                                        />
+                                        <button
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="topbar__chip topbar__chip--inactive"
+                                            title="Importar Obstáculos"
+                                            aria-label="Importar Obstáculos"
+                                        >
+                                            <IconUpload width={18} height={18} />
+                                        </button>
+                                    </>
+                                )}
                             </>
                         )}
                     </>
