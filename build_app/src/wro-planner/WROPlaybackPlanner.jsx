@@ -36,7 +36,11 @@ import {
     uid,
     MAT_MM,
     DEG2RAD,
-    RAD2DEG
+    RAD2DEG,
+    mmToPxPoint,
+    pxToMmPoint,
+    mmToPxSections,
+    pxToMmSections
 } from "./domain/constants";
 import {
     normalizeAngle,
@@ -107,7 +111,8 @@ export default function WROPlaybackPlanner() {
 
     const [selectedSectionId, setSelectedSectionId] = useState(sections[0].id);
     const [expandedSections, setExpandedSections] = useState([sections[0].id]);
-    const [initialPose, setInitialPose] = useState({ x: 120, y: 120, theta: 0 });
+    // initialPose and sections.points store x,y in MM (tapete coords) so path keeps correct scale when canvas resizes
+    const [initialPose, setInitialPose] = useState({ x: 354, y: 354, theta: 0 });
 
     // =========================================================================
     // STATE - Drawing & Interaction
@@ -161,6 +166,13 @@ export default function WROPlaybackPlanner() {
     const [preventCollisions, setPreventCollisions] = useState(true);
 
     // =========================================================================
+    // MISSION MARKERS STATE
+    // Missions are visual markers indicating target locations (no collision)
+    // =========================================================================
+    const [missions, setMissions] = useState([]);
+    const [selectedMissionId, setSelectedMissionId] = useState(null);
+
+    // =========================================================================
     // REFS
     // =========================================================================
     const drawSessionRef = useRef({ active: false, lastPoint: null, addedDuringDrag: false });
@@ -208,6 +220,23 @@ export default function WROPlaybackPlanner() {
         return unit === 'mm' ? ppm : ppm * 10;
     }, [canvasBaseSize, unit]);
 
+    // Convert sections (points in mm) and initialPose (mm) to pixel coords for current canvas size.
+    // This way the path keeps correct scale when panels collapse/expand and canvas resizes.
+    const { sectionsPx, initialPosePx } = useMemo(() => {
+        const cw = canvasBaseSize.width || 1;
+        const ch = canvasBaseSize.height || 1;
+        const sectionsPx = sections.map(s => ({
+            ...s,
+            points: s.points.map(p => {
+                const px = mmToPxPoint(p.x, p.y, cw, ch);
+                return { ...p, x: px.x, y: px.y };
+            })
+        }));
+        const px = mmToPxPoint(initialPose.x, initialPose.y, cw, ch);
+        const initialPosePx = { ...initialPose, x: px.x, y: px.y };
+        return { sectionsPx, initialPosePx };
+    }, [sections, initialPose, canvasBaseSize.width, canvasBaseSize.height]);
+
     // =========================================================================
     // STATELESS ROUTE CALCULATION
     // 
@@ -215,9 +244,9 @@ export default function WROPlaybackPlanner() {
     // It recalculates EVERYTHING whenever sections change.
     // =========================================================================
     const routeData = useMemo(() => {
-        // Flatten sections to waypoints array
+        // Flatten sections (in px for current canvas) to waypoints array
         const waypoints = flattenSectionsToWaypoints(
-            sections.filter(s => s.isVisible)
+            sectionsPx.filter(s => s.isVisible)
         );
 
         // Skip if no waypoints or invalid pixelsPerUnit
@@ -230,16 +259,16 @@ export default function WROPlaybackPlanner() {
             };
         }
 
-        // Calculate route using stateless pathCalculator
+        // Calculate route using stateless pathCalculator (expects pixel coords)
         const { instructions, pathSegments, poses } = calculateRouteInstructions(
-            initialPose,
+            initialPosePx,
             waypoints,
             pixelsPerUnit
         );
 
         // Generate playback actions
         const playbackActions = generatePlaybackActionsFromCalc(
-            initialPose,
+            initialPosePx,
             waypoints,
             pixelsPerUnit
         );
@@ -251,7 +280,7 @@ export default function WROPlaybackPlanner() {
             playbackActions,
             poses
         };
-    }, [sections, initialPose, pixelsPerUnit]);
+    }, [sectionsPx, initialPosePx, pixelsPerUnit]);
 
     // =========================================================================
     // SYNC REF WITH LATEST ROUTE DATA (STALE CLOSURE FIX)
@@ -274,8 +303,8 @@ export default function WROPlaybackPlanner() {
         stopPlayback,
         actionCursorRef
     } = usePlayback({
-        initialPose,
-        sections,
+        initialPose: initialPosePx,
+        sections: sectionsPx,
         unitToPx,
         currentSection,
         playbackSpeed,
@@ -340,8 +369,8 @@ export default function WROPlaybackPlanner() {
         console.log('[WROPlaybackPlanner] Starting mission with', actions.length, 'actions');
 
         // Use startPlayback directly with fresh actions
-        startPlayback(actions, initialPose);
-    }, [stopPlayback, startPlayback, initialPose]);
+        startPlayback(actions, initialPosePx);
+    }, [stopPlayback, startPlayback, initialPosePx]);
 
     /**
      * Start reverse mission playback.
@@ -372,12 +401,12 @@ export default function WROPlaybackPlanner() {
         // Calculate end pose to start reverse from there
         const waypoints = latestRouteData.waypoints;
         const lastPose = waypoints.length > 0
-            ? latestRouteData.poses?.[latestRouteData.poses.length - 1] || initialPose
-            : initialPose;
+            ? latestRouteData.poses?.[latestRouteData.poses.length - 1] || initialPosePx
+            : initialPosePx;
 
         console.log('[WROPlaybackPlanner] Starting reverse mission with', reversedActions.length, 'actions');
         startPlayback(reversedActions, lastPose);
-    }, [stopPlayback, startPlayback, initialPose]);
+    }, [stopPlayback, startPlayback, initialPosePx]);
 
     /**
      * Start current section playback.
@@ -404,11 +433,11 @@ export default function WROPlaybackPlanner() {
         }
 
         // Calculate start pose for this section
-        const startPose = computePoseUpToSection(sections, initialPose, currentSection.id, unitToPx);
+        const startPose = computePoseUpToSection(sectionsPx, initialPosePx, currentSection.id, unitToPx);
 
         console.log('[WROPlaybackPlanner] Starting section with', sectionActions.length, 'actions');
         startPlayback(sectionActions, startPose);
-    }, [stopPlayback, startPlayback, currentSection, sections, initialPose, unitToPx]);
+    }, [stopPlayback, startPlayback, currentSection, sectionsPx, initialPosePx, unitToPx]);
 
     /**
      * Start current section reverse playback.
@@ -445,12 +474,12 @@ export default function WROPlaybackPlanner() {
         }
 
         // Calculate end pose of section to start reverse from there
-        const startPose = computePoseUpToSection(sections, initialPose, currentSection.id, unitToPx);
+        const startPose = computePoseUpToSection(sectionsPx, initialPosePx, currentSection.id, unitToPx);
         const endPose = getPoseAfterActions(startPose, currentSection.actions, unitToPx);
 
         console.log('[WROPlaybackPlanner] Starting section reverse with', reversedActions.length, 'actions');
         startPlayback(reversedActions, endPose);
-    }, [stopPlayback, startPlayback, currentSection, sections, initialPose, unitToPx]);
+    }, [stopPlayback, startPlayback, currentSection, sectionsPx, initialPosePx, unitToPx]);
 
     // =========================================================================
     // EFFECTS
@@ -562,10 +591,14 @@ export default function WROPlaybackPlanner() {
             stopPlayback();
         }
 
+        const cw = canvasBaseSize.width || 1;
+        const ch = canvasBaseSize.height || 1;
+
         setSections(prev => {
-            const modified = prev.map(s => {
+            const prevPx = mmToPxSections(prev, cw, ch);
+            const modified = prevPx.map(s => {
                 if (s.id !== sectionId) return s;
-                const startPose = computePoseUpToSection(prev, initialPose, s.id, unitToPx);
+                const startPose = computePoseUpToSection(prevPx, initialPosePx, s.id, unitToPx);
                 const newPoints = pointsFromActions(newActions, startPose, unitToPx);
                 const endPose = getPoseAfterActions(startPose, newActions, unitToPx);
                 return {
@@ -579,11 +612,11 @@ export default function WROPlaybackPlanner() {
 
             const changedIndex = modified.findIndex(s => s.id === sectionId);
             if (changedIndex === -1 || changedIndex === modified.length - 1) {
-                return modified;
+                return pxToMmSections(modified, cw, ch);
             }
 
             let runningPose = getPoseAfterActions(
-                computePoseUpToSection(modified, initialPose, sectionId, unitToPx),
+                computePoseUpToSection(modified, initialPosePx, sectionId, unitToPx),
                 newActions,
                 unitToPx
             );
@@ -602,9 +635,9 @@ export default function WROPlaybackPlanner() {
                 runningPose = endPose;
             }
 
-            return result;
+            return pxToMmSections(result, cw, ch);
         });
-    }, [initialPose, unitToPx, isRunning, stopPlayback]);
+    }, [initialPosePx, unitToPx, isRunning, stopPlayback, canvasBaseSize.width, canvasBaseSize.height]);
 
     const removeLastPointFromCurrentSection = useCallback(() => {
         if (!currentSection || currentSection.points.length === 0) return;
@@ -613,15 +646,43 @@ export default function WROPlaybackPlanner() {
             stopPlayback();
         }
 
+        const cw = canvasBaseSize.width || 1;
+        const ch = canvasBaseSize.height || 1;
+
         setSections(prev => {
             const modified = prev.map(s => {
                 if (s.id !== currentSection.id) return s;
                 const newPts = s.points.slice(0, -1);
                 return { ...s, points: newPts };
             });
-            return recalcSectionsFromPointsStable({ sections: modified, initialPose, unitToPx, pxToUnit });
+            const modifiedPx = mmToPxSections(modified, cw, ch);
+            const result = recalcSectionsFromPointsStable({ sections: modifiedPx, initialPose: initialPosePx, unitToPx, pxToUnit });
+            return pxToMmSections(result, cw, ch);
         });
-    }, [currentSection, initialPose, pxToUnit, unitToPx, isRunning, stopPlayback]);
+    }, [currentSection, initialPosePx, pxToUnit, unitToPx, isRunning, stopPlayback, canvasBaseSize.width, canvasBaseSize.height]);
+
+    /** Convert sections (mm) to px, run recalc, return result in mm. Used by CanvasBoard when adding/dragging points. Optional initialPosePxOverride (e.g. when dragging start pose). */
+    const recalcSectionsAndConvertToMm = useCallback((modifiedMm, initialPosePxOverride) => {
+        const cw = canvasBaseSize.width || 1;
+        const ch = canvasBaseSize.height || 1;
+        const modifiedPx = mmToPxSections(modifiedMm, cw, ch);
+        const pose = initialPosePxOverride ?? initialPosePx;
+        const result = recalcSectionsFromPointsStable({ sections: modifiedPx, initialPose: pose, unitToPx, pxToUnit });
+        return pxToMmSections(result, cw, ch);
+    }, [canvasBaseSize.width, canvasBaseSize.height, initialPosePx, unitToPx, pxToUnit]);
+
+    /** Update initialPose from canvas pixel coords (e.g. when user drags start pose). */
+    const setInitialPoseFromPx = useCallback((posePx) => {
+        const cw = canvasBaseSize.width || 1;
+        const ch = canvasBaseSize.height || 1;
+        const mm = pxToMmPoint(posePx.x, posePx.y, cw, ch);
+        setInitialPose(prev => ({ ...prev, x: mm.x, y: mm.y }));
+    }, [canvasBaseSize.width, canvasBaseSize.height]);
+
+    /** Convert canvas pixel coords to mm (for storing new/updated points). Pass to CanvasBoard. */
+    const pxToMmPointForCanvas = useCallback((px, py) => {
+        return pxToMmPoint(px, py, canvasBaseSize.width || 1, canvasBaseSize.height || 1);
+    }, [canvasBaseSize.width, canvasBaseSize.height]);
 
     const addSection = () => {
         const newId = uid('sec');
@@ -674,6 +735,9 @@ export default function WROPlaybackPlanner() {
                 stopPlayback();
             }
 
+            const cw = canvasBaseSize.width || 1;
+            const ch = canvasBaseSize.height || 1;
+
             setSections(prevSections => {
                 const modified = prevSections.map(s => {
                     if (s.id !== selectedNode.sectionId) return s;
@@ -686,13 +750,14 @@ export default function WROPlaybackPlanner() {
                     return { ...s, points: newPoints };
                 });
 
-                // Recalculate actions after toggling reverse
-                return recalcSectionsFromPointsStable({
-                    sections: modified,
-                    initialPose,
+                const modifiedPx = mmToPxSections(modified, cw, ch);
+                const result = recalcSectionsFromPointsStable({
+                    sections: modifiedPx,
+                    initialPose: initialPosePx,
                     unitToPx,
                     pxToUnit
                 });
+                return pxToMmSections(result, cw, ch);
             });
 
             console.log('[WROPlaybackPlanner] Toggled reverse for waypoint:', selectedNode);
@@ -700,7 +765,7 @@ export default function WROPlaybackPlanner() {
             // No waypoint selected - toggle global reverseDrawing for new points
             setReverseDrawing(prev => !prev);
         }
-    }, [selectedNode, isRunning, stopPlayback, initialPose, unitToPx, pxToUnit]);
+    }, [selectedNode, isRunning, stopPlayback, initialPosePx, unitToPx, pxToUnit, canvasBaseSize.width, canvasBaseSize.height]);
 
     const handleBgUpload = (e) => {
         const file = e.target.files[0];
@@ -735,6 +800,7 @@ export default function WROPlaybackPlanner() {
         const data = {
             version: 2,
             timestamp: Date.now(),
+            coordSystem: 'mm',
             fieldKey,
             grid,
             robot,
@@ -767,9 +833,24 @@ export default function WROPlaybackPlanner() {
                 if (data.fieldKey) setFieldKey(data.fieldKey);
                 if (data.grid) setGrid(data.grid);
                 if (data.robot) setRobot(data.robot);
-                if (data.initialPose) setInitialPose(data.initialPose);
-                if (data.sections) setSections(data.sections);
                 if (data.unit) setUnit(data.unit);
+                const cw = canvasBaseSize.width || 800;
+                const ch = canvasBaseSize.height || 387;
+                if (data.initialPose) {
+                    if (data.coordSystem === 'mm') {
+                        setInitialPose(data.initialPose);
+                    } else {
+                        const mm = pxToMmPoint(data.initialPose.x, data.initialPose.y, cw, ch);
+                        setInitialPose(prev => ({ ...prev, x: mm.x, y: mm.y, theta: data.initialPose.theta ?? prev.theta }));
+                    }
+                }
+                if (data.sections) {
+                    if (data.coordSystem === 'mm') {
+                        setSections(data.sections);
+                    } else {
+                        setSections(pxToMmSections(data.sections, cw, ch));
+                    }
+                }
             } catch (err) {
                 console.error("Error importando misión", err);
                 alert("Archivo inválido");
@@ -891,6 +972,120 @@ export default function WROPlaybackPlanner() {
     }, [isRunning, stopPlayback]);
 
     // =========================================================================
+    // HANDLERS - Missions
+    // =========================================================================
+
+    const handleAddMission = useCallback(() => {
+        const sizePx = unitToPx(4); // 4cm default size
+        const colors = ['#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#f59e0b', '#14b8a6'];
+        const colorIndex = Math.floor(Math.random() * colors.length);
+        const newMission = {
+            id: uid('mission'),
+            x: canvasBaseSize.width / 2,
+            y: canvasBaseSize.height / 2,
+            size: sizePx,
+            color: colors[colorIndex],
+            shape: 'circle',
+            label: `M${missions.length + 1}`,
+            rotation: 0,
+            opacity: 0.7
+        };
+        setMissions(prev => [...prev, newMission]);
+        setSelectedMissionId(newMission.id);
+        // Deselect obstacle when adding mission
+        setSelectedObstacleId(null);
+    }, [canvasBaseSize, unitToPx, missions.length]);
+
+    const handleUpdateMission = useCallback((id, newProps) => {
+        setMissions(prev => prev.map(m =>
+            m.id === id ? { ...m, ...newProps } : m
+        ));
+    }, []);
+
+    const handleDeleteMission = useCallback(() => {
+        if (!selectedMissionId) return;
+        setMissions(prev => prev.filter(m => m.id !== selectedMissionId));
+        setSelectedMissionId(null);
+    }, [selectedMissionId]);
+
+    const handleSelectMission = useCallback((id) => {
+        setSelectedMissionId(id);
+        if (id) {
+            setSelectedNode(null);
+            setSelectedObstacleId(null);
+        }
+    }, [setSelectedNode]);
+
+    const handleExportMissions = useCallback(() => {
+        const data = {
+            version: "1.0",
+            type: "wro-missions",
+            timestamp: Date.now(),
+            missions: missions
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `misiones_campo.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, [missions]);
+
+    const handleImportMissions = useCallback((e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const data = JSON.parse(evt.target.result);
+                if (!data.missions || !Array.isArray(data.missions)) {
+                    alert("Archivo inválido: No se encontró la lista de misiones.");
+                    return;
+                }
+
+                // Validate and normalize each mission
+                const normalizedMissions = data.missions.map((m, index) => {
+                    // Validate required fields
+                    if (typeof m.x !== 'number' || typeof m.y !== 'number') {
+                        console.warn(`Mission ${index} missing position, using default`);
+                        return null;
+                    }
+
+                    // Create normalized mission with defaults for missing fields
+                    return {
+                        id: m.id || uid('mission'),
+                        x: m.x,
+                        y: m.y,
+                        size: typeof m.size === 'number' && m.size > 0 ? m.size : 40,
+                        color: m.color || '#22c55e',
+                        shape: ['circle', 'square', 'triangle', 'star', 'flag'].includes(m.shape) ? m.shape : 'circle',
+                        label: m.label || '',
+                        rotation: typeof m.rotation === 'number' ? m.rotation : 0,
+                        opacity: typeof m.opacity === 'number' ? Math.max(0, Math.min(1, m.opacity)) : 0.7
+                    };
+                }).filter(m => m !== null); // Remove invalid missions
+
+                if (normalizedMissions.length === 0) {
+                    alert("No se pudieron importar misiones válidas.");
+                    return;
+                }
+
+                setMissions(normalizedMissions);
+                setSelectedMissionId(null);
+
+                console.log(`Importadas ${normalizedMissions.length} misiones de ${data.missions.length} en el archivo`);
+            } catch (err) {
+                console.error("Error importando misiones", err);
+                alert("Error al leer el archivo JSON.");
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = null;
+    }, []);
+
+    // =========================================================================
     // RENDER
     // =========================================================================
 
@@ -930,6 +1125,9 @@ export default function WROPlaybackPlanner() {
                         onAddObstacle={handleAddObstacle}
                         onExportObstacles={handleExportObstacles}
                         onImportObstacles={handleImportObstacles}
+                        onAddMission={handleAddMission}
+                        onExportMissions={handleExportMissions}
+                        onImportMissions={handleImportMissions}
                     />
                 </div>
             </header>
@@ -938,7 +1136,15 @@ export default function WROPlaybackPlanner() {
             <div className="flex-1 flex overflow-hidden px-6 pb-6 gap-6 max-w-[1920px] mx-auto w-full">
 
                 {/* Left Panel - SECTIONS */}
-                <aside style={{ width: 400, flexShrink: 0, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <aside style={{ 
+                    width: isSectionsPanelCollapsed ? 48 : 400, 
+                    flexShrink: 0, 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    height: '100%', 
+                    overflow: 'hidden',
+                    transition: 'width 0.2s ease'
+                }}>
                     <SectionsPanel
                         sections={sections}
                         setSections={setSections}
@@ -948,7 +1154,7 @@ export default function WROPlaybackPlanner() {
                         exportMission={exportMission}
                         importMission={importMission}
                         updateSectionActions={updateSectionActions}
-                        computePoseUpToSection={(sectionId) => computePoseUpToSection(sections, initialPose, sectionId, unitToPx)}
+                        computePoseUpToSection={(sectionId) => computePoseUpToSection(sectionsPx, initialPosePx, sectionId, unitToPx)}
                         pxToUnit={pxToUnit}
                         isCollapsed={isSectionsPanelCollapsed}
                         setIsCollapsed={setIsSectionsPanelCollapsed}
@@ -970,12 +1176,14 @@ export default function WROPlaybackPlanner() {
                             unit={unit}
                             robot={robot}
                             robotImgObj={robotImgObj}
-                            sections={sections}
+                            sections={sectionsPx}
                             setSections={setSections}
+                            pxToMmPointForCanvas={pxToMmPointForCanvas}
+                            recalcSectionsAndConvertToMm={recalcSectionsAndConvertToMm}
                             selectedSectionId={selectedSectionId}
                             setSelectedSectionId={setSelectedSectionId}
-                            initialPose={initialPose}
-                            setInitialPose={setInitialPose}
+                            initialPose={initialPosePx}
+                            setInitialPose={setInitialPoseFromPx}
                             playPose={playPose}
                             isRunning={isRunning}
                             drawMode={drawMode}
@@ -1007,6 +1215,13 @@ export default function WROPlaybackPlanner() {
                             collisionPadding={collisionPadding}
                             preventCollisions={preventCollisions}
 
+                            // Missions
+                            missions={missions}
+                            onUpdateMission={handleUpdateMission}
+                            selectedMissionId={selectedMissionId}
+                            onSelectMission={handleSelectMission}
+                            onDeleteMission={handleDeleteMission}
+
                             // Other props
                             setHoverNode={setHoverNode}
                             draggingStart={draggingStart}
@@ -1022,8 +1237,8 @@ export default function WROPlaybackPlanner() {
                             actionCursorRef={actionCursorRef}
                             unitToPx={unitToPx}
                             pxToUnit={pxToUnit}
-                            computePoseUpToSection={(sections, initialPose, sectionId, unitToPx) =>
-                                computePoseUpToSection(sections, initialPose, sectionId, unitToPx)
+                            computePoseUpToSection={(_, __, sectionId, unitToPx) =>
+                                computePoseUpToSection(sectionsPx, initialPosePx, sectionId, unitToPx)
                             }
                             handleContextMenu={handleContextMenu}
                             removeLastPointFromCurrentSection={removeLastPointFromCurrentSection}
@@ -1068,7 +1283,15 @@ export default function WROPlaybackPlanner() {
                 </main>
 
                 {/* Right Panel - WAYPOINTS INSTRUCTIONS */}
-                <aside style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <aside style={{ 
+                    width: isWaypointsPanelCollapsed ? 48 : 320, 
+                    flexShrink: 0, 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    height: '100%', 
+                    overflow: 'hidden',
+                    transition: 'width 0.2s ease'
+                }}>
                     <WaypointsPanel
                         waypoints={routeData.waypoints}
                         instructions={routeData.instructions}

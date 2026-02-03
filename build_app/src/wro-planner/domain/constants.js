@@ -19,3 +19,52 @@ export const DEFAULT_GRID = { cellSize: 1, pixelsPerUnit: 5, lineAlpha: 0.35, of
 export const DEFAULT_ROBOT = { width: 18, length: 20, color: "#0ea5e9", imageSrc: null, opacity: 1, wheelOffset: 10 };
 export const ZOOM_LIMITS = { min: 0.5, max: 2, step: 0.25 };
 export const SNAP_45_BASE_ANGLES = [0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4];
+
+/**
+ * Convert a point from mm (tapete coordinates) to canvas pixels.
+ * Uses canvas size so the path scales correctly when the canvas resizes.
+ */
+export function mmToPxPoint(xMm, yMm, canvasWidth, canvasHeight) {
+    if (!canvasWidth || !canvasHeight) return { x: 0, y: 0 };
+    const scaleX = canvasWidth / MAT_MM.w;
+    const scaleY = canvasHeight / MAT_MM.h;
+    return { x: xMm * scaleX, y: yMm * scaleY };
+}
+
+/**
+ * Convert a point from canvas pixels to mm (tapete coordinates).
+ */
+export function pxToMmPoint(xPx, yPx, canvasWidth, canvasHeight) {
+    if (!canvasWidth || !canvasHeight) return { x: 0, y: 0 };
+    const scaleX = canvasWidth / MAT_MM.w;
+    const scaleY = canvasHeight / MAT_MM.h;
+    return { x: xPx / scaleX, y: yPx / scaleY };
+}
+
+/**
+ * Convert all section points from mm to px (for a given canvas size).
+ */
+export function mmToPxSections(sections, canvasWidth, canvasHeight) {
+    if (!canvasWidth || !canvasHeight) return sections;
+    return sections.map(s => ({
+        ...s,
+        points: s.points.map(p => {
+            const px = mmToPxPoint(p.x, p.y, canvasWidth, canvasHeight);
+            return { ...p, x: px.x, y: px.y };
+        })
+    }));
+}
+
+/**
+ * Convert all section points from px to mm (for a given canvas size).
+ */
+export function pxToMmSections(sections, canvasWidth, canvasHeight) {
+    if (!canvasWidth || !canvasHeight) return sections;
+    return sections.map(s => ({
+        ...s,
+        points: s.points.map(p => {
+            const mm = pxToMmPoint(p.x, p.y, canvasWidth, canvasHeight);
+            return { ...p, x: mm.x, y: mm.y };
+        })
+    }));
+}

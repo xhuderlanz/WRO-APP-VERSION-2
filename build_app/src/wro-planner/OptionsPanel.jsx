@@ -424,7 +424,7 @@ const OptionsPanel = ({
                         <div className="option-card">
                             <div className="option-card__grid option-card__grid--three">
                                 <label className="option-field">
-                                    <span className="option-field__label">Posición X (px)</span>
+                                    <span className="option-field__label">Posición X (mm)</span>
                                     <input
                                         type="number"
                                         className="option-field__control"
@@ -433,7 +433,7 @@ const OptionsPanel = ({
                                     />
                                 </label>
                                 <label className="option-field">
-                                    <span className="option-field__label">Posición Y (px)</span>
+                                    <span className="option-field__label">Posición Y (mm)</span>
                                     <input
                                         type="number"
                                         className="option-field__control"
