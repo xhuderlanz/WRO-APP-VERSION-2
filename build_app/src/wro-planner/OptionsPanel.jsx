@@ -2,7 +2,23 @@ import React, { useEffect } from "react";
 import { IconTarget } from "./icons";
 import { FIELD_PRESETS, DEG2RAD, RAD2DEG } from "./domain/constants";
 
-const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOpacity, setBgOpacity, grid, setGrid, robot, setRobot, initialPose, setInitialPose, handleBgUpload, handleRobotImageUpload, setIsSettingOrigin, unit, onToggleUnit, cursorGuideColor, setCursorGuideColor, cursorGuideLineWidth, setCursorGuideLineWidth, ghostRobotOpacity, setGhostRobotOpacity, robotImageRotation, setRobotImageRotation }) => {
+const OptionsPanel = ({
+    showOptions, setShowOptions,
+    fieldKey, setFieldKey,
+    bgOpacity, setBgOpacity,
+    grid, setGrid,
+    robot, setRobot,
+    initialPose, setInitialPose,
+    handleBgUpload, handleRobotImageUpload,
+    setIsSettingOrigin,
+    unit, onToggleUnit,
+    cursorGuideColor, setCursorGuideColor,
+    cursorGuideLineWidth, setCursorGuideLineWidth,
+    ghostRobotOpacity, setGhostRobotOpacity,
+    robotImageRotation, setRobotImageRotation,
+    preventCollisions, setPreventCollisions,
+    collisionPadding, setCollisionPadding,
+}) => {
     const isMM = unit === 'mm';
     const sizeMin = isMM ? 1 : 0.1;
     const sizeMax = isMM ? 50 : 5;
@@ -125,6 +141,50 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                     <span className="option-field__hint">Pulsa sobre el tapete para definir dónde se ubica (0, 0).</span>
                                 </div>
                             </div>
+                            <div className="option-field">
+                                <span className="option-field__label">Seguridad</span>
+                                <div className="option-field__controls option-field__controls--single">
+                                    <button
+                                        type="button"
+                                        className="option-chip-button"
+                                        onClick={() => setPreventCollisions(!preventCollisions)}
+                                        style={{
+                                            backgroundColor: preventCollisions ? '#06b6d4' : '#e2e8f0',
+                                            color: preventCollisions ? '#fff' : '#64748b',
+                                            fontWeight: 600
+                                        }}
+                                    >
+                                        {preventCollisions ? 'Prevenir colisiones: ON' : 'Prevenir colisiones: OFF'}
+                                    </button>
+                                </div>
+                                <span className="option-field__hint">Impide añadir puntos que atraviesen obstáculos.</span>
+
+                                {preventCollisions && (
+                                    <div className="option-field" style={{ marginTop: '1rem' }}>
+                                        <span className="option-field__label">Margen de colisión ({unit})</span>
+                                        <div className="option-field__controls">
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="50"
+                                                step={isMM ? 1 : 0.5}
+                                                value={collisionPadding}
+                                                onChange={e => setCollisionPadding(Math.max(0, parseFloat(e.target.value) || 0))}
+                                                className="option-field__control"
+                                                style={{
+                                                    padding: '0.4rem',
+                                                    border: '1px solid #cbd5e1',
+                                                    borderRadius: '0.25rem',
+                                                    width: '100%'
+                                                }}
+                                            />
+                                        </div>
+                                        <span className="option-field__hint">
+                                            Zona de seguridad roja extra alrededor de obstáculos.
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
                             <div className="option-divider" />
                             <div className="option-field option-field--range">
                                 <div className="option-field__label">Tamaño de celda</div>
@@ -169,8 +229,8 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                 <input
                                     type="color"
                                     className="option-field__control option-field__control--color"
-                                    value={grid.color || '#ffffffff'}
-                                    onChange={e => setGrid(g => ({ ...g, color: e.target.value }))}
+                                    value={(grid.color || '#ffffff').slice(0, 7)}
+                                    onChange={e => setGrid(g => ({ ...g, color: e.target.value + (grid.color?.slice(7) || 'ff') }))}
                                 />
                             </div>
                             <div className="option-card__grid option-card__grid--two">
@@ -226,8 +286,8 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                     <input
                                         type="color"
                                         className="option-field__control option-field__control--color"
-                                        value={cursorGuideColor || '#ff0000ff'}
-                                        onChange={e => setCursorGuideColor(e.target.value)}
+                                        value={(cursorGuideColor || '#ff0000').slice(0, 7)}
+                                        onChange={e => setCursorGuideColor(e.target.value + (cursorGuideColor?.slice(7) || 'ff'))}
                                     />
                                 </div>
                                 <div className="option-field option-field--range">
@@ -287,7 +347,7 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                     <input
                                         type="color"
                                         className="option-field__control option-field__control--color"
-                                        value={robot.color}
+                                        value={(robot.color || '#000000').slice(0, 7)}
                                         onChange={e => setRobot(r => ({ ...r, color: e.target.value }))}
                                     />
                                 </label>
@@ -364,7 +424,7 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                         <div className="option-card">
                             <div className="option-card__grid option-card__grid--three">
                                 <label className="option-field">
-                                    <span className="option-field__label">Posición X (px)</span>
+                                    <span className="option-field__label">Posición X (mm)</span>
                                     <input
                                         type="number"
                                         className="option-field__control"
@@ -373,7 +433,7 @@ const OptionsPanel = ({ showOptions, setShowOptions, fieldKey, setFieldKey, bgOp
                                     />
                                 </label>
                                 <label className="option-field">
-                                    <span className="option-field__label">Posición Y (px)</span>
+                                    <span className="option-field__label">Posición Y (mm)</span>
                                     <input
                                         type="number"
                                         className="option-field__control"

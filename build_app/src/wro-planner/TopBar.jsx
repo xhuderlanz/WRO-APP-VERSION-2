@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { IconRuler, IconTarget } from "./icons";
+import { IconRuler, IconTarget, IconDownload, IconUpload } from "./icons";
 import useBreakpoint from "./hooks/useBreakpoint";
 import "./TopBar.css";
 
@@ -9,7 +9,16 @@ const TopBar = ({
     pauseResume, stopPlayback, setShowOptions, rulerActive, handleRulerToggle,
     reverseDrawing, onToggleReverse, referenceMode, onReferenceModeChange,
     zoom, onZoomIn, onZoomOut, onZoomReset, playbackSpeed, setPlaybackSpeed,
+    onOpenShortcuts,
+    onAddObstacle,
+    onExportObstacles,
+    onImportObstacles,
+    onAddMission,
+    onExportMissions,
+    onImportMissions
 }) => {
+    const fileInputRef = useRef(null);
+    const missionFileInputRef = useRef(null);
     const [quickMenu, setQuickMenu] = useState({ open: false, target: null, anchor: { x: 0, y: 0 } });
     const [hamburgerOpen, setHamburgerOpen] = useState(false);
     const longPressTimerRef = useRef(null);
@@ -210,6 +219,103 @@ const TopBar = ({
                                 </button>
                             </div>
                         </div>
+
+                        {/* Add Obstacle Button */}
+                        {onAddObstacle && (
+                            <>
+                                <div className="topbar__divider"></div>
+                                <button
+                                    onClick={onAddObstacle}
+                                    className="topbar__chip topbar__chip--inactive"
+                                    title="Agregar Obstáculo"
+                                    aria-label="Agregar Obstáculo"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                    </svg>
+                                </button>
+                                {onExportObstacles && (
+                                    <button
+                                        onClick={onExportObstacles}
+                                        className="topbar__chip topbar__chip--inactive"
+                                        title="Exportar Obstáculos"
+                                        aria-label="Exportar Obstáculos"
+                                    >
+                                        <IconDownload width={18} height={18} />
+                                    </button>
+                                )}
+                                {onImportObstacles && (
+                                    <>
+                                        <input
+                                            type="file"
+                                            accept=".json"
+                                            ref={fileInputRef}
+                                            style={{ display: 'none' }}
+                                            onChange={onImportObstacles}
+                                        />
+                                        <button
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="topbar__chip topbar__chip--inactive"
+                                            title="Importar Obstáculos"
+                                            aria-label="Importar Obstáculos"
+                                        >
+                                            <IconUpload width={18} height={18} />
+                                        </button>
+                                    </>
+                                )}
+                            </>
+                        )}
+
+                        {/* Mission Buttons */}
+                        {onAddMission && (
+                            <>
+                                <div className="topbar__divider"></div>
+                                <button
+                                    onClick={onAddMission}
+                                    className="topbar__chip topbar__chip--inactive"
+                                    title="Agregar Misión"
+                                    aria-label="Agregar Misión"
+                                    style={{ color: '#22c55e' }}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <line x1="12" y1="8" x2="12" y2="16"></line>
+                                        <line x1="8" y1="12" x2="16" y2="12"></line>
+                                    </svg>
+                                </button>
+                                {onExportMissions && (
+                                    <button
+                                        onClick={onExportMissions}
+                                        className="topbar__chip topbar__chip--inactive"
+                                        title="Exportar Misiones"
+                                        aria-label="Exportar Misiones"
+                                        style={{ color: '#22c55e' }}
+                                    >
+                                        <IconDownload width={18} height={18} />
+                                    </button>
+                                )}
+                                {onImportMissions && (
+                                    <>
+                                        <input
+                                            type="file"
+                                            accept=".json"
+                                            ref={missionFileInputRef}
+                                            style={{ display: 'none' }}
+                                            onChange={onImportMissions}
+                                        />
+                                        <button
+                                            onClick={() => missionFileInputRef.current?.click()}
+                                            className="topbar__chip topbar__chip--inactive"
+                                            title="Importar Misiones"
+                                            aria-label="Importar Misiones"
+                                            style={{ color: '#22c55e' }}
+                                        >
+                                            <IconUpload width={18} height={18} />
+                                        </button>
+                                    </>
+                                )}
+                            </>
+                        )}
                     </>
                 )}
             </div>
@@ -292,6 +398,18 @@ const TopBar = ({
                 <button onClick={handleRulerToggle} className={`topbar__chip ${rulerActive ? '' : 'topbar__chip--inactive'}`}>
                     <IconRuler style={{ width: 18, height: 18 }} />
                 </button>
+
+                {/* Keyboard Shortcuts Button */}
+                {onOpenShortcuts && (
+                    <button
+                        onClick={onOpenShortcuts}
+                        className="topbar__chip topbar__chip--inactive"
+                        title="Atajos de teclado"
+                        aria-label="Atajos de teclado"
+                    >
+                        ⌨️
+                    </button>
+                )}
 
                 <button onClick={() => setShowOptions(true)} className="topbar__options-btn">
                     Opciones
