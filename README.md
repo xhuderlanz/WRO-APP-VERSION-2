@@ -94,7 +94,7 @@ build_app/
 
 ## Licencia
 
-[Indica aquí tu licencia, por ejemplo: MIT, GPL, o "Uso educativo".]
+Este proyecto está bajo la licencia [MIT](LICENSE).
 
 ---
 
